@@ -1,0 +1,40 @@
+TORRE DE HANÓI
+
+#lang racket
+(define (move here there) 
+    (display (string-append here " -> " there "\n"))
+)
+
+(define towers n out> >in <extra>)
+    (unless (zero? n)
+        (begin
+            (towers (- n 1) out> <extra> >in)
+            (move out> >in)
+            (towers (- n 1) <extra> out> >in)
+)))
+
+PROBLEMA DAS N-RAINHAS
+Exercício
+
+SIERPINSK
+(require 2htpd/image)
+
+@ let: define variáveis localmente, criando associações. Ex:
+@ (let ([a 42] [b 155]) (+ a b))
+@ 
+@ Mas esta forma não permitiria:
+@ (let ([a 42] [b a]) (+ a b))
+@ Porque eles só valeriam depois das definições.
+@ 
+@ Para o caso acima, existe o let*:
+@ (let* ([a 42] [b a]) (+ a b))
+@ 'a' já estaria definida assim que fosse dada sua definição.
+@ 
+@ Também podemos criar um let com nome.
+@ Este nome é um 'alias' disso.
+(let sierpinsk ([n 8])
+    (if (zero? n)
+        (triangle 2 'solid 'red)
+        (let ([t (sierpinski (- n 1))])
+            (freeze (above t (beside t t)))
+)))

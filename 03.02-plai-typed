@@ -1,0 +1,97 @@
+Veremos agora uma linguagem TIPADA
+#lang play-typed
+
+Não temos mais 'car' ou 'cdr'. No lugar dela, usaremos a função
+'list' para definir o tipo listas e 'first' para conseguir o 
+'car' de um par e/ou uma lista. Ex:
+    
+    > (first (list 1 2 3))
+    - number
+    1
+
+No play-typed, o apóstrofe tem tratamento diferente:
+    > (+ 1 2)       @ É executado e recebemos o retorno
+    - number
+    3
+    
+    > '(+ 1 2)      @ Cria-se uma s-expression. Um tipo novo que
+                    @ poderá ser interpretado.
+    - s-expression
+    '(+ 1 2)
+    
+    > (list 1 2)    @ Uma sequência de números, de certo tipo.
+    - (listof number)
+    '(1 2)
+
+Para fazer o 'cast' entre s-expression e listas, precisamos usar
+o operador 's-exp->list'.
+
+Podemos fazer listas de listas:
+    > (list (list 1 2) (list 4 5 6 7)) @ Listas de listas, como em Python
+    - (listof (listof number))
+    '((1 2) (4 5 6 7))
+
+    > (list-ref (list 1 2 3 4 5 6) 3) @ Recupera um elemento de uma lista
+    - number
+    3
+
+    > (vector 1 2 3) @ Vector: Tem tamanho FIXO, não pode ser MODIFICADO
+                     @         e usualmente é mais rápido.
+    - (vectorof number)
+    '#(1 2 3)
+
+Com o plai-typed, podemos declarar tipos com 'define'. Para
+declarar EXPLICITAMENTE o tipo de um nome, colocamos de forma extra
+um ':':
+    > (define c "string")
+    - string
+    "string"
+    
+    > (define c : number 2)
+    - number
+    2
+    
+    > @ Já faz a verificação de tipagem previamente
+    > (define c : number "string")
+    - Erro
+
+Outra forma de lista, que na realidade age como uma struct de C/C++,
+é o 'value':
+    > (values 9 8 "outro")
+    - (number * number * string)
+    '#(9 8 "outro")
+    
+    > @ Usando values para 'declarar' vários lugares.
+    > (define-values (marca valor) (values "Prada" 3.50))
+    > marca
+    - string
+    "Prada"
+    > valor
+    - number
+    3.5
+    
+Fazendo funções:
+    
+    > (define (3* n) (* 3 n))
+    > (3* 8)
+    - number
+    24
+    
+    > @ Define a função com TIPO DE ARGUMENTO e TIPO DE RETORNO
+    > (define 3* [n : number]) : number (* 3 n)
+    
+    > ((λ ([x : number]) : number (+ x x) 21)
+    - number
+    42
+    
+    > @ A sintaxe abaixo funciona como um 
+    > (define mais2 : (number -> number) (λ(x) (+ x 2)))
+    > (mais2 89)
+    - number
+    91
+    > mais2
+    - (number -> number)
+    #procedure:...
+
+Ainda no plai-typed, existe o fechamento (em que a função leva o 
+contexto de algumas variáveis no seu ambiente com ela).
