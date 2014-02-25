@@ -1,0 +1,52 @@
+RACKET
+======
+
+* Usaremos a versão 'plai-typed', do livro principal da disciplina,
+  para que possamos realizar vários usos.
+* O Racket surgiu do Scheme, que veio de uma variação do Lisp.
+
+* Em átomos, temos dois elementos principais:
+    - Átomos: #\a (caracter); "Conceitos" (string); 
+              15.3, 12, 3*1/2, 2+3i (números);
+              λ (procedimentos);
+    - Listas: São um conjunto de pares (cons):
+              (a, b, c, d, e)
+              (a . (b . (c . (d . (e . ()))))
+               ^    ^    ^        ^^^^^^^^
+               |    |    |        car  cdr
+               |    |    |   ^^^^^^^^^^^^^
+               |    |   car       cdr
+               |    |   ^^^^^^^^^^^^^^^^^^^
+               |   car            cdr
+               |   ^^^^^^^^^^^^^^^^^^^^^^^^^
+              car                 cdr 
+            (cabeça)            (cauda)
+    
+    As listas são interessantes porque podem ser executadas. 
+    Dessa maneira, qualquer coisa pode ser um identificador, 
+    excetuando os nomes que seriam de átomos:
+        (+, 1, 3) -> Faz a soma de 1 com 3
+    
+    Uma lista pode NÃO ser executada: para isso, podemos colocar
+    um apóstrofe (') antes da lista. A execução é, então, adiada.
+
+* Procedimentos
+    Um procedimento pode ser criado com:
+    (λ (lista de argumentos) execução)
+    
+    Podemos usar o procedimento 'apply' para passar um outro
+    procedimento como ARGUMENTO, a ser aplicado em uma lista.
+    
+    Ou, simplificando: (define (nome lista_de_argumentos) (execução))
+    
+    É possível, até mesmo, criar 'fábricas de função':
+        (define (faz* n) (λ (k) (* n k)))
+        ((faz* 7) 6)
+        > 42
+        
+    Chama-se de 'fechamento' (closure) uma função que carrega o 
+    ambiente com ela. No exemplo acima, o valor de 'n', quando
+    o procedimento é criado, cria-se uma ASSOCIAÇÃO entre o 'n'
+    e a nova procedure. Esse é o 'ambiente' da variável, que 
+    fica salvo. Em geral, este ambiente pode existir apenas em
+    tempo de compilação.

@@ -1,0 +1,12 @@
+PACA - MAC0316 (Código: racket)
+
+2 provas: MP = (P1 + 2*P2)/3
+Sub aberta
+
+Livro - PLAI - 2ª Edição
+    
+* Usaremos a linguagem 'Racket', baseada no Scheme, que então é 
+  voltada para criar novas linguagens de Programação.
+    Racket <- Scheme <- Lisp
+
+* Dr. Racket (IDE para edição de Racket)

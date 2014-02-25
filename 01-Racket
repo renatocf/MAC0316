@@ -1,0 +1,101 @@
+RACKET
+
+* Antes, em geral, teríamos a criação do programa como:
+    
+    Código fonte ----> Tokens -----> código
+                 lexer        parser 
+
+  Agora, faremos algo diferente:
+    
+    Código fonte ----> Tokens -----> árvore interna ------> código
+                 lexer        parser                backend
+
+  Teremos, agora, uma ÁRVORE, e ela será construída pelo parser 
+  para que represente o código.
+    
+  Teríamos 3 notações que gerariam uma mesma árvore:
+    3 * (10 + 4)   infixa               *
+    3 10 4 + *     posfixa             / \
+    (* 3 (+ 10 4)) prefixa            3   +
+                                         / \
+                                        10  4
+  
+  A terceira representação é a mais simples para que nós possamos 
+  representar a estrutura natural da árvore - e ela é perfeitamente
+  interpretável em Lisp, Scheme e Racket.
+
+* Estrutura de Racket
+    ÁTOMOS -> valores (42, "string", #t (verdadeiro), #f (falso))
+    
+    LISTAS -> 
+        (a b c ..)  'a' pode ser uma função, e é indistinda a uma 
+        (+ 2 3)     variável. Por esse motivo a linguagem é FUNCIONAL,
+                    pois a função é tratada como uma variável comum.
+
+* Toda lista é executada. Porém, em alguns casos, seria interessante
+  se pudéssemos gerar uma LISTA SEM EXECUÇÃO (como um vetor). Neste
+  caso, a sintaxe é:
+                                '(a b c)
+
+* Toda EXPRESSÃO começa com uma PROCEDURE (que pode ter quase 
+  qualquer tipo de caractere, exceto alguns como parênteses).
+        (* 3 2)                 -> válido
+        (* 2 (+ 7 6 5 1 2)      -> válido
+        ()                      -> inválido: procedimentos devem ter
+                                             sempre operador
+        '()                     -> válido: lista vazia
+
+* Podemos definir um novo nome para uma variável, usando a 
+  procedure 'define':
+    > (define x 5)
+
+* As listas são representações simplificadas (abreviações) de 
+  construções criadas por 'cons'. O 'cons' gera pares, que 
+  são simplificadamente representados com um '.' entre eles.
+  
+    > (cons 5 6)
+        (5 . 6)
+    > (define x (cons 5 6))
+    > (car x)
+        5
+    > (cdr x)
+        6
+
+* 'car' é sempre o primeiro elemento do par. 'cdr', o segundo. 
+  Poderíamos ter, por exemplo:
+    > (define x (cons '(1 2 3) '(4 5 6)))
+    > (car x)
+        '(1 2 3)
+    > (cdr x)
+        '(4 5 6)
+    > (cdr (cdr x))
+        '(5 6)
+    > (cddr c)       @ Uma abreviação
+        '(5 6)
+
+* Uma lista é um conjunto de pares ligados, com o 'car' um elemento
+  e o 'cdr' uma outra lista. Ex:
+    > (car '(1 2))          
+        1                   Uma lista é um par ordenado de um 
+    > (cdr '(1 2))          elemento e uma sublista.
+        '(2)                
+    > (car (cons 1 2))      
+        1                   Um cons é apenas um par de dois elementos
+    > (car (cons 1 2))      (que podem ou não ser listas)
+        2
+
+* Podemos fazer comparações também:
+    > (eq  1 '(1))
+        Se o resultado da avaliação de ambos é igual
+    > (eqv 1 '(1))
+        Se a representação de ambas são equivalentes
+    > (eq? 1 '(1))
+        Se o texto é igual (como string)
+
+* É possível trabalhar com números racionais (2/3) ou complexos (3+2i).
+
+* Podemos criar funções anônimas (lambdas)
+    > (λ (x) (* x x))
+       ^  ^  ^^^^^^^-- Ação a ser executada
+       |  '-- Argumento (átomo)
+       '-- Será função anônima
