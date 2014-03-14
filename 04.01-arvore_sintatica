@@ -1,0 +1,160 @@
+
+Na aula passada, criamos uma primeira estrutura que mostrava como era
+uma aritmética simples, somadora de números. O tipo ArithC tinha 3
+possibilidades de construção: número (tipo primitivo, a base da
+recursão) ou, recursivamente, um plusC/multC com duas ArithC.
+
+(define-type ArithC                               multC
+  [ numC  (n : number) ]                          /   \ 
+  [ plusC (l : ArithC) (r : ArithC) ]         plusC   plusC
+  [ multC (l : ArithC) (r : ArithC) ]         /   \   /   \
+)                                           numC  numC numC numC
+
+Mas como poderíamos adicionar uma SUBTRAÇÃO (-)? Poderíamos criar um
+tipo diferente de Aritmética, que tivesse o tipo subtração:
+
+(define-type ArithS                               (- a b)
+  [ numS    (n : number) ]                           ↓
+  [ plusS   (l : ArithS) (r : ArithS) ]           bminusS
+  [ multS   (l : ArithS) (r : ArithS) ]            /   \   
+  [ bminusS (l : ArithS) (r : ArithS) ]         numS   numS
+)                                                   a     b
+
+Mas como poderíamos converter para a árvore de ArithS para ArithC?
+Poderíamos usar uma conversão:
+                     (- a b) → (+ a (* -1 b))
+
+A árvore gerada seria, então:
+    
+     plusC         | Chama-se o processo de introduzir a árvore mais 
+     /   \         | complexa de AÇÚCAR SINTÁTICO. Entretanto, não é 
+  numC   multC     | necessário ter que tornar a gramática do backend
+   a     /   \     | mais complexa. Para retirar o açúcar sintático,
+      numC   numC  | em geral cria-se uma função DESUGAR, que pega a 
+       -1     b    | árvore primária e torna-a mais simples.
+                   | 
+                   | Um exemplo tradicional de açúcar sintático é um 
+                   | FOR - que é convertido para um while.
+
+Quando criamos uma linguagem, temos uma GRAMÁTICA, que define as regras
+relacionadas à como a linguagem é lida pelo parser. A gramática segue 
+uma sintaxe própria. Esta é convertida para uma sintaxe abstrata: a 
+árvore com ArithS. Depois, para outra sintaxe abstrata, a que descreve
+a árvore de ArithC. Poderíamos ter quantos níveis de gramática fosse
+necessário.
+
+A nossa função desugar ficaria:
+(define (desugar [as : ArithS]) : ArithC
+  (type-case ArithS as
+    [ numS    (s)   (numC n) ]
+    [ plusS   (l r) (plusC (desugar l) (desugar r)) ]
+    [ multS   (l r) (plusC (desugar l) (desugar r)) ]
+    [ bminusS (l r) (plusC (desugar l) 
+                      (multC (numC -1) (desugar r)) ) ]
+))
+
+O interpretador é ainda o mesmo:
+(define (interp [a : ArithC]) : number
+  (type-case ArithC a
+    [numC (n) n]
+    [plusC (l r) (+ (interp l) (interp r))]
+    [multC (l r) (+ (interp l) (interp r))]
+
+O parser para o ArithS será
+(define (parse [s : s-expression]) : ArithS
+  (cond
+    [(s-exp-number? s) (numS (s-exp->number s))]
+    [(s-exp-list? s)
+      (let ([sl (s-exp->list s)])
+        (case (s-exp->symbol (first sl))
+          [(+) (plusS (parse (second sl)) (parse (third sl)))]
+          [(*) (multS (parse (second sl)) (parse (third sl)))]
+          ; agora temos o '-'
+          [(-) (bminusS (parse (second sl)) (parse (third sl)))]
+        [else (error 'parse "invali list input")]
+    ))]
+  [else (error 'parse "invalid input"')]
+))
+
+Para não precisarmos fazer conversões explícitas, podemos criar um
+'interpS', que já aceita um ArithS como entrada e intepreta:
+(define (interpS [a : ArithS]) (interp (desugar a)))
+
+Como poderíamos, agora, criar um - unário? Também podemos usar um 
+açucar sintático. Para isso, modifiquemos o ArithS:
+
+(define-type ArithS
+  [ numS    (n : number) ]                    
+  [ plusS   (l : ArithS) (r : ArithS) ]       
+  [ multS   (l : ArithS) (r : ArithS) ]       
+  [ bminusS (l : ArithS) (r : ArithS) ]       
+  [ uminusS (e : ArithS) ]                    
+)
+
+Podemos multiplicar qualquer expressão por -1. Teríamos, então, que
+converter usando o desugar:
+
+(define (desugar [as : ArithS]) : ArithC
+  (type-case ArithS as
+    [ numS    (s)   (numC n) ]
+    [ plusS   (l r) (plusC (desugar l) (desugar r)) ]
+    [ multS   (l r) (plusC (desugar l) (desugar r)) ]
+    [ bminusS (l r) (plusC (desugar l) 
+                      (multC (numC -1) (desugar r)) ) ]
+    [ uminusS (e)   (desugar (bminusS (numS 0) e))
+))
+
+Essa solução é válida, mas ela tem um problema sutil: em uminusS, 
+temos uma RECURSÃO. Precisamos garantir que a recursão pare sempre.
+Em casos como um cálculo de fatorial (por exemplo), estamos 
+reduzindo o problema sempre. Esse é um tipo de RECURSÃO ESTRUTURAL
+(pegando, sempre, um problema menor). Entretanto, no caso acima,
+quando usamos o bminusS, estamos aumentando nosso problema um 
+pouco, dado que a chamada de 'desugar' foi sobre o bminusS, e não
+sobre o e. Esse é um tipo de RECURSÃO GENERATIVA (chamada 
+recursiva feita sobre algo um pouco maior), e tem o potencial de
+não parar (não necessariamente, mas o potencial existe).
+
+Para evitarmos isso, temos uma solução: trocar o uminusS
+
+(define (desugar [as : ArithS]) : ArithC
+  (type-case ArithS as
+    [ numS    (s)   (numC n) ]
+    [ plusS   (l r) (plusC (desugar l) (desugar r)) ]
+    [ multS   (l r) (plusC (desugar l) (desugar r)) ]
+    [ bminusS (l r) (plusC (desugar l) 
+                      (multC (numC -1) (desugar r)) ) ]
+    [ uminusS (e)   (multC (numC -1) (desugar e))
+))
+
+Temos, portanto, um desugar sobre 'e', reduzindo o problema. A 
+recursão é ESTRUTURAL, e não GENERATIVA. O grande truque é 
+fazer o produto por -1. Estamos sempre gerando sobre as primitivas,
+criando açúcar sintático só sobre as primitivas, sem gerar açúcar
+sobre açúcar.
+
+O interpretador continua o mesmo, pois ainda temos o ArithC.
+
+O parser, porém, agora precisará reconhecer o bminusS.
+Como o '-' seria identificado como número, usaremos o ~ para ser
+interpretado como '-'.
+
+(define (parse [s : s-expression]) : ArithS
+  (cond
+    [(s-exp-number? s) (numS (s-exp->number s))]
+    [(s-exp-list? s)
+      (let ([sl (s-exp->list s)])
+        (case (s-exp->symbol (first sl))
+          [(+) (plusS (parse (second sl)) (parse (third sl)))]
+          [(*) (multS (parse (second sl)) (parse (third sl)))]
+          [(-) (bminusS (parse (second sl)) (parse (third sl)))]
+          ; o '~' será o sinal negativo
+          [(~) (uminusS (parse (second sl)))]
+        [else (error 'parse "invali list input")]
+    ))]
+  [else (error 'parse "invalid input"')]
+))
+
+O fato de termos de usar o ~ como sinal de - é porque o parser depende
+do parser do Racket. Se o scanner fosse feito por nós, poderíamos usar
+um LOOKAHEAD para que pudéssemos testar qual o tipo de -.

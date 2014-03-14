@@ -1,0 +1,78 @@
+    
+    * ArithC
+    
+                 ArithC
+     .-----------' | | '---------------------.
+     |      .------' '------.       .........|.........
+    numC  plusC           multC     :       ifC       :
+          /   \           /   \     :      / | \      :
+     ArithC   ArithC  ArithC ArithC : ArithC | ArithC :
+                                    :     ArithC      :
+                                    '''''''''''''''''''
+                                Precisaríamos mudar o ArithC
+                                para criar um ifC. Ele teria
+                                3 argumentos: condição, ação
+                                se verdadeira, ação se falsa.
+
+    * desugar (ArithS -> ArithC)
+
+        ...
+        [ ifS (c y n) (ifC (desugar c) (desugar s) (desugar n)) ]
+    
+    Estamos devolvendo um arithC usando um desugar.
+    
+    * Interpretador (ArithC -> number)
+    ...
+       [ ifC (c s n) (if (zero? (interp c)) (interp n) (interp s)) ] 
+    
+   
+    Não é possível criar um operador de divisão a partir dos operadores
+    primitivos já implementados - precisaríamos mexer no ArithC, ou
+    usar um primitivo 'inverso' (mas não seria necessário)
+
+(define-type ArithC                  
+  [ numC  (n : number) ]             
+  [ plusC (l : ArithC) (r : ArithC)              ]
+  [ multC (l : ArithC) (r : ArithC)              ]
+  [ ifC   (c : ArithC) (y : ArithC) (s : ArithC) ]
+)                                    
+
+(define-type ArithS                    
+  [ numS  (n : number)                           ]
+  [ plusS (l : ArithS) (r : ArithS)              ]
+  [ multS (l : ArithS) (r : ArithS)              ]
+  [ ifS   (c : ArithS) (y : ArithS) (s : ArithS) ]
+)
+
+(define (desugar [as : ArithS]) : ArithC
+  (type-case ArithS as
+    [ numS    (s)     (numC n) ]
+    [ plusS   (l r)   (plusC (desugar l) (desugar r)) ]
+    [ multS   (l r)   (plusC (desugar l) (desugar r)) ]
+    [ bminusS (l r)   (plusC (desugar l) 
+                        (multC (numC -1) (desugar r)) ) ]
+    [ ifS     (c y n) (ifC (desugar c) (desugar y) (desugar n)) ]
+))
+
+(define (interp [a : ArithC]) : number
+  (type-case ArithC a
+    [numC  (n)     n]
+    [plusC (l r)   (+ (interp l) (interp r))]
+    [ifC   (c y n) (if (zero? (interp c)) (interp y) (interp n))]
+))
+
+(define (parse [s : s-expression]) : ArithS
+  (cond
+    [(s-exp-number? s) (numS (s-exp->number s))]
+    [(s-exp-list? s)
+      (let ([sl (s-exp->list s)])
+        (case (s-exp->symbol (first sl))
+          [(+)  (plusS (parse (second sl)) (parse (third sl)))]
+          [(*)  (multS (parse (second sl)) (parse (third sl)))]
+          [(-)  (bminusS (parse (second sl)) (parse (third sl)))]
+          [(if) (ifS (parse (first sl)) 
+                    (parse (second sl)) (parse (third sl)))
+        [else (error 'parse "invali list input")]
+    ))]
+  [else (error 'parse "invalid input"')]
+))

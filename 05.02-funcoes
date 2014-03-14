@@ -1,0 +1,159 @@
+
+    * ExprC
+    
+                          ExprC
+         .-------------' | | | | |
+         |   .-----------' | | | '-------------------.
+         |   |    .--------' | '------.              |
+        idC numC  |   .------'     multC           ifC
+             .----' plusC          /   \          / | \
+             |      /   \      ArithC ArithC ArithC | ArithC
+             | ArithC   ArithC                     ArithC
+             |
+           appC 
+           /  \
+        symb  ArithC              
+    
+    Para criar funções, primeiro criamos um novo tipo (exigência
+    do plai-typed), que será FunDefC. Este novo tipo terá como
+    construtor a palavra fdC e 3 outros argumentos:
+        - um símbolo, o nome da função;
+        - um argumento, que também será um símbolo a ser
+          substituído na execução;
+        - uma ExprC, que é o que será feito.
+    
+    (define-type FunDefC
+        [fdC (name: symbol) (arg: symbol) (body: ExprC))
+    
+    ; Um exemplo de definição de função será:
+    (fdC 'double 'x (plusC (idC 'x) (idC 'x)))
+    
+    ; Para chamar a função, usaremos o appC:
+    (appC 'double (numC 5))
+    
+INTERPRETADOR
+===============
+
+interp ExprC (listof FunDefC) →  num
+O interpretador terá 2 argumentos:
+    * Uma ExprC com uma árvore;
+    * Uma lista de definições de funções, a serem utilizadas
+      dentro da árvore.
+
+Dentro do interpretador, dado um 'appC', o que ele precisará 
+fazer será buscar na lista de funções (um ambiente, ou tabela
+de símbolos) pela função. Então usaremos
+
+subst value arg expr
+    * Substitui o VALOR no ARGUMENTO dentro da EXPRESSÃO
+    * A expressão será o CORPO de uma função. Então, substituiremos
+      o símbolo por este valor
+
+Uma vez feito isso, o appC será substituído pelo bloco com
+as substituições já feitas. 
+
+(define-type ExprC                  
+  [ numC  (n : number)                        ]
+  [ plusC (l : ExprC) (r : ExprC)             ]
+  [ multC (l : ExprC) (r : ExprC)             ]
+  [ ifC   (c : ExprC) (y : ExprC) (s : ExprC) ]
+  [ appC  (f : idC)   (a : ExprC)             ]
+)                                    
+
+(define-type ArithS                    
+  [ numS  (n : number)                           ]
+  [ plusS (l : ArithS) (r : ArithS)              ]
+  [ multS (l : ArithS) (r : ArithS)              ]
+  [ ifS   (c : ArithS) (y : ArithS) (s : ArithS) ]
+  [ appS  (f : idS)    (a : ExprS)               ]
+)
+
+(define (desugar [as : ArithS]) : ArithC
+  (type-case ArithS as
+    [ numS    (s)     (numC n)                                  ]
+    [ plusS   (l r)   (plusC (desugar l) (desugar r))           ]
+    [ multS   (l r)   (plusC (desugar l) (desugar r))           ]
+    [ bminusS (l r)   (plusC (desugar l) 
+                        (multC (numC -1) (desugar r)) )         ]
+    [ ifS     (c y n) (ifC (desugar c) (desugar y) (desugar n)) ]
+    ; Precisamos fazer susugar no argumento, porque ele é 
+    ; também uma ExprS (e precisa ser transformado em ExprC)
+    [ appS    (f a)   (appC f (desugar a))                      ]
+))
+
+(define (interp [a : ExprC] [fds : (listof FuncDefC) ) : number
+  (type-case ExprC a
+    [numC  (n)     n]
+    [plusC (l r)   (+ (interp l fds) (interp r fds))]
+    [ifC   (c y n) (if (zero? (interp c)) (interp y fds) (interp n fds))]
+    
+    ; Primeiro, acha a definição de fd
+    ; Então, substitui as macros
+    ; Por último, executa a interpretação
+    [appC  (f a)
+      (local ([define fd (get-fundef f fds)]) ; peda a definição de fd
+                                              ; na biblioteca fds
+        (interp (subst a                      ; interpreta o resultado
+          (fdC-arg fd)                        ; de subst
+          (fdC-body fd)
+        )
+      fds))]
+    
+    ; Não devem sobrar identificadores livres na expressão
+    [idC (_) (error 'interp "não deveria encontrar isso!")]
+))
+
+; Substitui os símbolos pelo valor deles
+(define (subst [value : ExprC ] [name: symbol] [in : ExprC]) : ExprC
+  (type-case ExprC in
+    [numC (n) in]
+    [idC (s) (cond
+        [ (symbol=? s name) value]  ; symbol, substitute
+        [ else in ]                 ; otherwise, do nothing
+    )]
+    [appC  (f a)   (appC (subst value name a))]
+    [plusC (l r)   (plusC (sust value name l) (subst value name r))]
+    [ifC   (c s n) (ifC (subst value name c)
+                        (subst value name y) (subst value name n))
+    ]
+))
+
+; Acha a função dentro da biblioteca
+; Faz uma recursão de cauda, que vira um 'for'
+(define (get-fundef [n : symbol] [fds : (listof FunDefC)]) : FunDefC
+    (cond
+        [(empty? fds) (error 'get-fundef "referência não definida")]
+        [(cons? fds) (cond
+            [(equal? n (fdC-name (first fds))) (first fds)] ; se achar
+            [else (get-fundef n (rest fds))]                ; continue
+        )]
+))
+
+(define (parse [s : s-expression]) : ArithS
+  (cond
+    [(s-exp-number? s) (numS (s-exp->number s))]
+    [(s-exp-list? s)
+      (let ([sl (s-exp->list s)])
+        (case (s-exp->symbol (first sl))
+          [(+)  (plusS (parse (second sl)) (parse (third sl)))]
+          [(*)  (multS (parse (second sl)) (parse (third sl)))]
+          [(-)  (bminusS (parse (second sl)) (parse (third sl)))]
+          [(if) (ifS (parse (first sl)) 
+                    (parse (second sl)) (parse (third sl)))
+          [(call) (appS (s-exp->symbol (second sl)) (parse (third sl)) )]
+        [else (error 'parse "invali list input")]
+    ))]
+  [else (error 'parse "invalid input"')]
+))
+
+(define biblioteca (list
+    [ fdC 'dobro 'x (plusC (idC 'x) (idC 'x)) ]
+))
+
+Quanto executamos:
+(interp (call 'dobro (mult C (numC 7) (numC 3))))
+
+Temos um problema: geramos duas cópias do 
+(mult C (numC 7) (numC 3)). Esse conceito é 'eager',
+e é executado na hora. Pelo contrário, temos o 
+lazy (que só calcula se necessário).
