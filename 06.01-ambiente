@@ -1,0 +1,80 @@
+BINDINGS e AMBIENTES
+======================
+
+No último interpretador que vimos, tínhamos um problema: não tínhamos
+uma abordagem eager, mas uma lazy. Como substituímos os argumentos,
+eles eram calculados somente se necessários. Apesar disso, ficávamos
+aumentando a árvore ao introduzir a substituição prévia da expressão
+que definia o argumento - e isso o tornava ineficiente.
+
+Para evitar isso, podemos criar uma TABELA DE SÍMBOLOS para os
+argumentos da função: quando encontrarmos um símbolo que represente
+o nome de uma variável, acessamos a expressão que o define. Essa 
+ação de associação é chamada de BINDING, e a tabela de símbolos é um
+AMBIENTE.
+
+Conforme adentramos numa função, devemos EXPANDIR um ambiente. 
+Colocando um novo ambiente à frente, podemos 'mascarar' a associação
+antiga, e usar a nova.
+
+(define-type Binding                       ; Um 'binding', ou associação,
+    [bind (name : symbol) (val : number)]) ; é associar um certo símbolo
+                                           ; a um valor.
+
+(define-type-alias Env (listof Binding))   ; Diremos que um AMBIENTE 
+                                           ; é uma lista de bindings.
+(define mt-env empty)                      ; Lista vazia, muitos 
+                                           ; ambientess são vazios.
+(define extend-env cons)                   ; Usamos um 'cons' para
+                                           ; extendermos uma lista,
+                                           ; incluindo a nova lista 
+                                           ; no início.
+
+;
+; O interpretador, agora, além da lista de funções deverá
+; levar uma lista de associações.
+;
+(define (interp [a : ExprC] [env : Env] [fds : (listof FuncDefC)]) : number
+  (type-case ExprC a
+    [numC  (n)     n]
+    [plusC (l r)   (+ (interp l fds) (interp r fds))]
+    [ifC   (c y n) (if (zero? (interp c)) (interp y fds) (interp n fds))]
+    
+    ; Primeiro, acha a definição de fd
+    ; Então, substitui as macros
+    ; Por último, executa a interpretação
+    [appC  (f a)
+      (local ([define fd (get-fundef f fds)])
+        (interp (fdC-body fd)
+          (extend-env
+            (bind (fdC-arg fd) (interp a env fds))
+          env)
+        fds))]
+    
+    ; Não devem sobrar identificadores livres na expressão
+    [idC (_) (error 'interp "não deveria encontrar isso!")]
+))
+
+(define (lookup [for : symbol] [env : Env]) : number
+    (cond
+        [(empty? env) (error 'lookup "argument not fund")]
+
+O caso anterior, porém, tem um problema: conforme ampliamos o 
+ambiente, as variáveis não podem recuperar suas associações anteriores
+quando saem da função. Como resolvermos isso? Podemos restringir o 
+ambiente apenas para a função. E como fazer? Em vez de passar juntarmos
+os ambientes antigos, podemos uní-lo à um ambiente vazio (não temos 
+outra forma de criar um ambiente se não usando o extend-env).
+
+[appC (f a)
+  (local ([define fd (get-fundef f fds)])
+    (interp (fdC-body fd)
+      (extend-env
+        (bind (fdC-arg fd) (interp a env fds))
+      mt-env)
+    fds))]
+
+Esse tipo de associação é chamada de ASSOCIAÇÃO ESTÁTICA, pois o
+ambiente não é herdado conforme entramos em escopos mais profundos.
+A associação, do outro modo, é a ASSOCIAÇÃO DINÂMICA, que é 
+considerada um ERRO de implementação.
