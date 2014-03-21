@@ -54,6 +54,7 @@ as substituições já feitas.
 
 (define-type ExprC                  
   [ numC  (n : number)                        ]
+  [ idC   (s : symbol)                        ]
   [ plusC (l : ExprC) (r : ExprC)             ]
   [ multC (l : ExprC) (r : ExprC)             ]
   [ ifC   (c : ExprC) (y : ExprC) (s : ExprC) ]

@@ -37,8 +37,10 @@ antiga, e usar a nova.
 (define (interp [a : ExprC] [env : Env] [fds : (listof FuncDefC)]) : number
   (type-case ExprC a
     [numC  (n)     n]
-    [plusC (l r)   (+ (interp l fds) (interp r fds))]
-    [ifC   (c y n) (if (zero? (interp c)) (interp y fds) (interp n fds))]
+    [plusC (l r)   (+ (interp l env fds) (interp r env fds))]
+    [multC (l r)   (+ (interp l env fds) (interp r env fds))]
+    [ifC   (c y n) (if (zero? (interp c)) 
+                    (interp y env fds) (interp n env fds))]
     
     ; Primeiro, acha a definição de fd
     ; Então, substitui as macros

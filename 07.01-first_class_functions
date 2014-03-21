@@ -1,0 +1,277 @@
+Até agora, nossas funções não faziam parte da nossa linguagem.
+Agora, vamos tentar inserir as funções como valores, dentro
+do contexto da ExprC.
+
+O que mais nos impede, até agora, é que o nosso interpretador
+sempre nos devolve um Número. Isso é bem ruim, pois teríamos um
+ERRO se déssemos uma função. Vamos, então, introduzir no interpretador
+a possibilidade de devolvemos uma FUNÇÃO.
+
+Primeiro, dentro de ExprC, vamos ADICIONAR um dfC (function
+definition), em vez de termos a função criada externamente.
+Isso nos TIRARÁ a limitação de que tenhamos APENAS funções
+definidas anteriormente.
+
+(define-type ExprC
+  [ numC  (n : number)                                 ]
+  [ idC   (s : symbol)                                 ]
+  [ plusC (l : ExprC) (r : ExprC)                      ]
+  [ multC (l : ExprC) (r : ExprC)                      ]
+  [ ifC   (c : ExprC) (y : ExprC) (s : ExprC)          ]
+  [ appC  (f : ExprC) (a : ExprC)                      ]
+  [ fdC   (name : symbol) (arg : symbol) (body: ExprC) ]
+)
+
+Porém, agora, temos duas novas dificuldade. 'fdC' é, na verdade, um
+novo tipo primitivo (além de número). Agora, nossos operadores deverão
+verificar TIPOS. Também, nosso interpretador não devolve funções, e
+precisaremos ter um valor de retorno especificado.
+
+Nosso tipo de retorno será, a partir de agora:
+(define-type Value
+    [numV (n : number)]
+    [funV (name : symbol) (arg : symbol) (body : ExprC)]
+)
+
+Agora, porém, precisaremos definir operadores QUE VERIFIQUEM TIPOS, 
+para colocarmos um interpretador.
+(define (num+ [l : Value] [r : Value]) : Value
+    (cond 
+        [(and (numV? l) (numV? r))
+            (numV (+ (numV-n l) (numV-n r)))\]
+        [else "Error"]
+)) 
+
+(define (num* [l : Value] [r : Value]) : Value
+    (cond 
+        [(and (numV? l) (numV? r))
+            (numV (* (numV-n l) (numV-n r)))\]
+        [else "Error"]
+)) 
+
+O desugar tem que mudar só um pouquinho: agora, precisaremos apenas
+fazer um 'desugar' na ExprC do argumento
+
+(define (desugar [as : ArithS]) : ArithC
+  (type-case ArithS as
+    [ numS    (s)     (numC n)                                  ]
+    [ plusS   (l r)   (plusC (desugar l) (desugar r))           ]
+        [ multS   (l r)   (plusC (desugar l) (desugar r))           ]
+        [ bminusS (l r)   (plusC (desugar l) 
+                            (multC (numC -1) (desugar r)) )         ]
+        [ ifS     (c y n) (ifC (desugar c) (desugar y) (desugar n)) ]
+        [ appS    (f a)   (appC f (desugar a))                      ]
+        [ dfS     (f a b) (fdC  f a (desugar b))]
+    ))
+
+    (define (interp [a : ExprC] [env : Env]) : number
+      (type-case ExprC a
+        [numC  (n)     (numV n)] ; garantir o retorno do tipo esperado
+        [ idC  (n)     (lookup n env)]
+        [plusC (l r)   (num+ (interp l env) (interp r env))]
+    [multC (l r)   (num* (interp l env) (interp r env))]
+    [ifC   (c y n) (if (zero? (interp c)) (interp y fds) (interp n fds))]
+    
+    ; Primeiro, acha a definição de fd
+    ; Então, substitui as macros
+    ; Por último, executa a interpretação
+    [appC  (f a)
+      (local ([define fd (interp f env)])
+        (interp (funV-body fd)
+          (extend-env
+            (bind (funV-arg fd) (interp a env))
+          mt-env)
+    ))]
+    
+    ; Não devem sobrar identificadores livres na expressão
+    [idC (_) (error 'interp "não deveria encontrar isso!")]
+))
+
+(define (lookup [for : symbol] [env : Env]) : Value
+    (cond
+        (empt? env) (error 'error msg')
+        
+(define (parse [s : s-expression]) : ArithS
+  (cond
+    [(s-exp-number? s) (numS (s-exp->number s))]
+    [(s-exp-list? s)
+      (let ([sl (s-exp->list s)])
+        (case (s-exp->symbol (first sl))
+          [(+)  (plusS (parse (second sl)) (parse (third sl)))]
+          [(*)  (multS (parse (second sl)) (parse (third sl)))]
+          [(-)  (bminusS (parse (second sl)) (parse (third sl)))]
+          [(if) (ifS (parse (first sl)) 
+                    (parse (second sl)) (parse (third sl)))
+          [(func) (fdS (s-exp->sumbol (second sl)) 
+                       (s-exp->symbol (third sl))
+                       (parse (fourth sl)) )]
+          [(call) (appS (s-exp->symbol (second sl)) (parse (third sl)) )]
+        [else (error 'parse "invali list input")]
+    ))]
+  [else (error 'parse "invalid input"')]
+))
+
+; Facilitador para a linguagem
+(define (interpS [s : s-expression]) 
+    (interp (desugar (parse s)) mt-env))
+
+Neste ponto do código, o NOME DA FUNÇÃO não foi usada em quase lugar
+nenhum. Isso é muito interessante, pois na realidade nossas funções
+não precisam ter nomes - são ANÕNIMAS. Elas são funções λ. E, na 
+realidade, é possível apenas definir FUNÇÕES DENTRO DE FUNÇÕES.
+
+Exemplos:
+> (interpS '(func f1 x (func f2 x (+ x x))) )
+  - Value
+  (funC 'f1 'x (fdC 'f2 'x (plusC (idC 'x) (idC 'x))))
+
+> (interpS '(call (func f1 x (func f2 x (+ x x))) 4) )
+  - Value
+  (funC 'f1 'x (fdC 'f2 'y (plusC (idC 'x) (idC 'y))))
+
+> (interpS '(call (call (func f1 x (func f2 x (+ x x))) 4) 5))
+  - Value
+  lookup: x não foi encontrado
+
+Esse último erro foi devido a que os ambientes NÃO ESTÃO SENDO HERDADOS.
+Se fizéssemos nosso sistema antigo, teríamos o erro de design do escopo
+global. Mas se levássemos, APENAS, o escopo anterior, poderíamos ter 
+esta flexibilidade.
+
+Este conceito de levar uma parte do ambiente consigo é chamada de 
+FECHAMENTO (closure), e as funções usadas que carregam este ambiente
+são conhecidas como LAMBDAS (λ).
+
+Não teremos mais fdC, mas lamC, para lambdas:
+        
+                        { nome
+                    fdC { arg   }
+                        { corpo } lamC
+                          env   }
+
+(define-type ExprC
+  [ numC  (n : number)                        ]
+  [ idC   (s : symbol)                        ]
+  [ plusC (l : ExprC) (r : ExprC)             ]
+  [ multC (l : ExprC) (r : ExprC)             ]
+  [ ifC   (c : ExprC) (y : ExprC) (s : ExprC) ]
+  [ appC  (f : ExprC) (a : ExprC)             ]
+  [ lamC  (arg : symbol) (body: ExprC)        ]
+)
+
+Porém, agora, temos duas novas dificuldade. 'fdC' é, na verdade, um
+novo tipo primitivo (além de número). Agora, nossos operadores deverão
+verificar TIPOS. Também, nosso interpretador não devolve funções, e
+precisaremos ter um valor de retorno especificado.
+
+Nosso tipo de retorno será, a partir de agora:
+(define-type Value
+    [numV  (n : number)]
+    [closV (arg : symbol) (body : ExprC) (env: Env)]
+)
+
+(define (desugar [as : ArithS]) : ArithC
+  (type-case ArithS as
+    [ numS    (s)     (numC n)                                  ]
+    [ plusS   (l r)   (plusC (desugar l) (desugar r))           ]
+        [ multS   (l r)   (plusC (desugar l) (desugar r))           ]
+        [ bminusS (l r)   (plusC (desugar l) 
+                            (multC (numC -1) (desugar r)) )         ]
+        [ ifS     (c y n) (ifC (desugar c) (desugar y) (desugar n)) ]
+        [ appS    (f a)   (appC f (desugar a))                      ]
+        [ lamS    (a b)   (lamC a (desugar b))]
+    ))
+
+    (define (interp [a : ExprC] [env : Env]) : number
+      (type-case ExprC a
+        [numC  (n)     (numV n)] ; garantir o retorno do tipo esperado
+        [idC   (n)     (lookup n env)]
+        [plusC (l r)   (num+ (interp l env) (interp r env))]
+        [multC (l r)   (num* (interp l env) (interp r env))]
+        [ifC   (c y n) (if (zero? (interp c))
+                            (interp y fds) (interp n fds))]
+        
+        ; Primeiro, acha a definição de fd
+        ; Então, substitui as macros
+        ; Por último, executa a interpretação
+        [appC  (f a)
+          (local ([define f-value (interp f env)])
+            (interp (closV-body f-value)
+              (extend-env
+                (bind (funV-arg f-value) (interp a env))
+              f-value) ; Agora, não passamos mais só mt-env, mas
+                       ; todo o valor da função
+        ))]
+))
+
+(define (lookup [for : symbol] [env : Env]) : Value
+    (cond
+        (empt? env) (error 'error msg')
+        
+(define (parse [s : s-expression]) : ArithS
+  (cond
+    [(s-exp-number? s) (numS (s-exp->number s))]
+    [(s-exp-list? s)
+      (let ([sl (s-exp->list s)])
+        (case (s-exp->symbol (first sl))
+          [(+)  (plusS (parse (second sl)) (parse (third sl)))]
+          [(*)  (multS (parse (second sl)) (parse (third sl)))]
+          [(-)  (bminusS (parse (second sl)) (parse (third sl)))]
+          [(if) (ifS (parse (first sl)) 
+                    (parse (second sl)) (parse (third sl)))
+          [(func) (lamS (s-exp->sumbol (second sl)) 
+                       (s-exp->symbol (third sl))    )]
+          [(call) (appS (s-exp->symbol (second sl)) (parse (third sl)) )]
+        [else (error 'parse "invali list input")]
+    ))]
+  [else (error 'parse "invalid input"')]
+))
+
+; Facilitador para a linguagem
+(define (interpS [s : s-expression]) 
+    (interp (desugar (parse s)) mt-env))
+
+* Ex:
+    (interpS '(call (func f (func x (call f 10))) (+ x y)))
+    
+                            appC
+                            /  \
+                           /    \
+                          /   ...\........
+                      lamC    :   addC   :
+                      /  \    :   /  \   :
+                  id f   lamC :id X  id Y:
+                         /  \ '''''''''''''
+                        /    \            |
+                      id X  appC          |
+                            /  \          |
+                         id f  numC 10    |
+                         ^^^^-------------'
+    
+    Nesse ponto do fim da árvore, f é aquela subárvore. Temos ERRO 
+    porque tanto X quanto Y não tiveram valore de binding associados.
+    Mesmo que fizéssemos um call para definir X no segundo λ, teríamos
+    APENAS uma função lambda que faria (+ valor_x y).
+
+Agora, todas as nossas funções são anônimas. Como poderíamos proceder
+para DAR NOMES às funções?
+
+Isso já é possível! Só usarmos o call:
+    > (interpS '(call (func f (call f 10)) (func x (+ x x))) ) 
+
+Criamos uma lambda que pega como argumento o corpo de uma função E
+a aplica no corpo de uma outra closure. Desse modo, estamos fazendo
+um binding do CORPO da função com o argumento dela.
+
+Fazendo um açúcar sintático sobre isto, poderíamos ter algum método
+de chamar funções. Ou, alterando o parser, poderíamos colocar que 
+qualquer símbolo simples fosse interpretado como uma função (e tentasse
+ser chamado. Assim, tiraríamos o 'call').
+    
+Se rodássemos sem o call, teríamos:
+    
+    > (interpS '(call (func f (call f 10))) ) 
+    (closV 'f (appC (idC 'f) (numC 10)) '()  )
+            ^ ^^^^^^^^^^^^^^^^^^^^^^^^^  ^- Environment vazio
+            | '- expressão que seria executada
+            '- nome da variável que poderia ser usada aí dentro
