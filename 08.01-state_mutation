@@ -1,0 +1,137 @@
+ESTADO E MUTAÇÃO
+
+É extremamente desejável que tenhamos uma maneira de crirar alterações
+nas nossas associações: variáveis.
+
+                          associação
+               id --------------------------> valor
+
+                referência
+               id ------> localização ------> valor
+                   .--.                .--.
+                   |  | Tabela que     |  | Tabela que
+                   |  | associa id     |  | associa local
+                   |  | à local        |  | a um valor
+                   '--'                '--' 
+
+Criaremos uma nova estrutura - um 'box' - que será nossas "caixas" que
+podem criar valores. A associação NÃO MUDA MAIS (do id para a caixa), 
+mas o valor dentro da caixa, sim, pode mudar.
+
+O box terá 3 operações: armazenar, alterar e recuperar.
+
+Para modificarmos o valor de um box, precisaremos de SEQUENCIAMENTO - 
+para mudar uma variável, por exemplo, deveremos alterar uma, primeiro,
+e depois alterar outra. Haverá uma sequência bem definida para 
+criarmos mudanças.
+
+; Agora, o interpretador poderá devolver uma caixa
+(define-type Value
+    [numV  (n : number)]
+    [closV (arg : symbol) (body : ExprC) (env: Env)]
+    [boxV  (v: Value)]
+)
+
+; Uma caixa, e as funções para ALTERAR e RECUPERAR o valor
+; nela poderá ser feita usando outros tipos de ExprC
+(define-type ExprC
+  [ numC    (n : number)                                 ]
+  [ idC     (s : symbol)                                 ]
+  [ plusC   (l : ExprC) (r : ExprC)                      ]
+  [ multC   (l : ExprC) (r : ExprC)                      ]
+  [ ifC     (c : ExprC) (y : ExprC) (s : ExprC)          ]
+  [ appC    (f : ExprC) (a : ExprC)                      ]
+  [ fdC     (name : symbol) (arg : symbol) (body: ExprC) ]
+  [ boxC    (v : ExprC)                                  ]
+  [ setboxC (b : ExprC)                                  ]
+  [ unboxC  (b : ExprC)                                  ]
+)
+
+(define (interp [a : ExprC] [env : Env]) : number
+  (type-case ExprC a
+    
+    ; Dado um boxC, devolvemos um valor boxV com, dentro dele,
+    ; o valor interpretado de A
+    [boxC   (a)     (boxV   (interp a env))]
+    
+    ; Retiramos o valor do box devolvido por a (ou teremos erro)
+    [unboxC (a)     (boxV-v (interp a env))]
+    
+    ; Uma sequência será um par de dois valores intepretados.
+    ; Essa definição TEM UM PROBLEMA: as modificações feitas
+    ; no env de b1 não serão passadas para env de b2. Como 
+    ; tratar isso?
+    [seqC   (b1 b2) (begin (interp b1 env) (interp b2 env))]
+    
+    ; Primeiro, acha a definição de fd
+    ; Então, substitui as macros
+    ; Por último, executa a interpretação
+    [appC  (f a)
+      (local ([define f-value (interp f env)])
+        (interp (closV-body f-value)
+          (extend-env
+            (bind (funV-arg f-value) (interp a env))
+          f-value) ; Agora, não passamos mais só mt-env, mas
+                   ; todo o valor da função
+    ))]
+    
+    [numC  (n)     (numV n)] ; garantir o retorno do tipo esperado
+    [idC   (n)     (lookup n env)]
+    [plusC (l r)   (num+ (interp l env) (interp r env))]
+    [multC (l r)   (num* (interp l env) (interp r env))]
+    [ifC   (c y n) (if (zero? (interp c))
+                        (interp y fds) (interp n fds))]
+))
+
+Para que não precisemos modificar os environments, ou que os 
+environments precisem ser usados para trocar valores (o que nos 
+jogaria, novamente, no problema de escopo dinâmico), precisaremos
+de uma NOVA TABELA DE SÍMBOLOS, agora para levar dos boxes para
+o valor que há no box. Esse será o STORAGE:
+
+            Env                     Storage
+            bind                    cell
+            símbolo->local          local->valor
+            mt-env                  mv-store
+            extend-env              override-store
+            lookup                  fetch
+
+Esta tabelade símbolo (STORAGE) será como uma memória (que é um caso
+concreto do conceito abstrato do storage). Nós não passaremos o env
+de um interpretador (para evitar o escopo dinâmico), mas poderemos
+passar a memória. Em nossa implementação em Racket, o 'override-store'
+será um ampliador da lista (como o extend-env). Mas no caso real,
+o storage seria global e compartilhado por todos.
+
+Passar o STORAGE pode ser pensado, abstratamente, como o interpretador
+passando um novo 'estado da memória'. Aqui, ele terá importância por
+modificarmos as listas. Mas no caso real, a memória seria mudada 
+realmente.
+
+Criaremos RESULT como sendo o "contradomínio" da função 'interp',
+que será o produto cartesiano dos valores pelo storage:
+
+(define-type Result
+    [ v*s   (v : Value) (s : Store)])
+
+(define (interp [e : ExprC] [env : Env] [sto : Store]) : Result
+    [plusC (l r)   (num+ (interp l env sto) (interp r env sto))]
+;                                       ^------------------^
+; Agoram teríamos o mesmo problema do env para o seqC: estamos
+; modificando o 'sto' em 'l' e 'r', mas não passamos de um para
+; o outro. Como poderíamos fazer? As várias interpretaões possíveis
+; são decisões semânticas, e dependem da sua própria decisão.
+    
+    ; Não precisaremos passar e/ou repassar o env. Como só
+    ; podemos criar bindings dentro de appC's, e appC's só
+    ; agem em campos de função, então ao sairmos de b1 ou 
+    ; b2, uma modificação de env deveria morrer lá.
+    [seqC (b1 b2) 
+        (type-case Result (interp b1 env sto)
+            ; Única possibilidade - só um truque esperto
+            ; para utilizarmos aqui...
+            
+            [v*s (v-b1 s-b1) ; só nomes - não têm nada 
+                             ; a ver com campos de variáveis
+                [(interp b2 env s-b1)])]
+)
