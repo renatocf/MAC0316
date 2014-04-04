@@ -1,0 +1,126 @@
+VARIÁVEIS
+==========
+Para criarmos variáveis, TIRAMOS as opções de box/setbox/unbox de
+dentro do parser. Nosso id's viram var's. 
+
+LET
+====
+Como poderíamos criar um 'let' na nossa linguagem?
+O objetivo do let é:
+    1) Criar um novo símbolo;
+    2) Salvar o valor neste símbolo;
+    3) Executar alguma ação com este símbolo associado
+       a este valor.
+
+Em Racket, temos a analogia:
+((λ(x) corpo) val) ↔ (let [x val] corpo)
+
+Na nossa linguagem, podemos ter o açúcar:
+    [letS (s : symbol) (v : value) (b : body)]
+
+No Desugar, transformaríamos para o λ:
+    [letS (id val expr) (appC (lamC if (desugar expr)) (desugar val))]
+
+O interpretador é o mesmo (pois o let é açúcar), mas precisamos 
+colocar algo no parser:
+    [(def) (letS (s-exp->symbol (second sl)) 
+            (parse (third sl)) (parse (fourth sl)) 
+    )]
+
+Usando isso, podemos ter, por exemplo:
+> (parse '(def b b b))
+    (letS 'b (varS 'b) (varS 'b))
+
+> (desugar (parse '(def b b b)))
+    (appC (lamC 'b (varC 'b)) (varC 'b))
+
+> (interp (desugar (parse '(def b b b))))
+    ERROR: lookup: b não foi encontrado
+
+RECURSÃO
+=========
+
+- Dados → referenciar { outro elemento do mesmo tipo
+                      { a si mesmo
+- Controle → função recursiva
+
+        .-----.       |   
+        |     |       |   .---.   .---.   .---.   .---.
+        |--.--|       |   | *-:-->| *-:-->| *-:-->| *-:--.
+        |  |  |       |   '---'   '---'   '---'   '---'  |
+        '--'--'       |     ^----------------------------'
+         /   \        |   
+        /     \       |                 
+   .-----.   .-----.  |               .---.
+   |     |   |     |  |               | *-:-.
+   |--.--|   |--.--|  |               '---' |
+   |  |  |   |  |  |  |                 ^---'
+   '--'--'   '--'--'  |   
+
+Para criarmos AUTORREFERÊNCIAS, precisaremos de dois passos:
+1) Criar uma associação (variável/box) não definida;
+2) Depois, tricar o valor para a localização da própria variável.
+
+As duas 'dependências' necessárias são:
+1) Criar MUTAÇÕES na variável;
+2) Usar SEQUENCIAMENTO de ações.
+
+Esse procedimento nos permitiria CORRIGIR o exemplo do let da 
+seção anterior. Se pudermos PEGAR o próprio 'endereço' da 
+variável b (guardando em b a chave da tabela de símbolos store).
+
+Um outro problema de autorreferência seria:
+> (interpS 
+    '(def fat 1729 (func n (if n (* n (call fat (-n 1))) 1)))
+)
+    ERROR: lookup: fat não foi encontrado
+
+Poderíamos tentar resolver usando um SEQUENCIAMENTO. Com ele,
+podemos alterar o STORE de modo que, 
+> (interpS '(def fat 1729 ; define fat com um valor dummy
+    (seq 
+        ; Troca 'fat' pelo valor que ela deveria ter: o
+        ; corpo da função fatorial. Não temos o problema,
+        ; pois fat já foi definido no início.
+        (:= fat (func n (if n (* n (call fat (-n 1))) 1)))
+        
+        ; Agora, com o corpo definido, e sabendo que nós
+        ; já tínhamos o símbolo definido, a recursão funciona.
+        (call (fat 10))
+)))
+
+O resultado desta mudança é que acabaremos definindo 'n' várias
+vezes, pois cada vez que entramos numa nova chamada, definimos
+um novo número 'n'. Se tivéssemos otimização, dado que esta é
+uma recursão de cauda, não precisaríamos criar estes environments
+várias vezes: apenas reutilizaríamos o já existente - e ele se
+tornaria um laço.
+
+Essa solução que encontramos usa, de certa maneira, uma recursão
+implícita. Usamos a alteração de ESTADO para criar a recursão. 
+Haveria alguma maneira de criarmos a recursão SEM STORE.
+
+(λ (n)
+    (if (zero? n)
+            1
+            (* n (? (- n 1)))
+))
+
+(
+    (λ (m) (m m))
+        (λ (f)
+            >> (λ (g)
+            >>     (λ (n)
+            >>         (if (zero? n)
+            >>             1
+            >>             (* n (g (- n 1)))
+            >> )))
+            (f f)
+))
+
+(λ (p)
+    (
+        (λ (f) (f f))
+        (λ () (p (λ (a) ((f f) a))))
+    )
+)
