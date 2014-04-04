@@ -1,0 +1,147 @@
+Estado → Mutação
+
+Antes, nossos identificadores tinham, SEMPRE, um valor fixo. Agora,
+estamos tentando realizar uma maneira de fazer com que estes valores
+mudem.
+
+Uma das formas que tentamos - alterar a associação pelo Environment - 
+é bem ruim. O Environment Dinâmico causa problemas porque as mudanças
+em níveis de função acabam indo para níveis superiores (nos quais não
+deveriam existir).
+
+Agora, propusemos criar uma nova forma, um REPOSITÓRIO de valor (box).
+A associação passa, agora, por um intermediário. O idC (nome) passa a 
+servir como uma REFERÊNCIA para uma "posição de memória" (box). A 
+associação do box até o valor é mutável (como podemos colocar valores
+diferentes num mesmo pedaço de memória).
+
+    Associações estáticas
+    
+                Environment
+    .------------------------------------.
+    |             binding                |
+    | idC -----------------------> Valor |
+    '------------------------------------'
+    
+    Ambiente com memória
+    
+        Environment         Storage
+    .----------------..------------------.
+    |       bind     ||    store         |
+    | idC --------> boxC --------> Valor |
+    '----------------''------------------'
+     symbol       location         value    ← Tabelas de símbolo
+
+Para o box, teremos UMA ESTRUTURA e DUAS OPERAÇÕES:
+    
+(define-type ExprC
+  [ boxC    (arg : ExprC)             ]
+  [ setBox  (b : ExprC)               ]
+  [ unbox   (b : ExprC)               ]
+  [ seqC    (b1 : ExprC) (b2 : ExprC) ]
+)
+
+A noção de caixa também deverá ser usada dentro dos 
+possíveis valores de retorno. Ela será, realmente, 
+apenas uma caixa para guardar outra expressão. E seu
+uso, dentro do contexto do interpretador, será apenas
+o de retirar o valor de dentro da caixa e aplicar nele
+o interpretador.
+
+(define-type Values
+  [ numV   (n : number)                   ]
+  [ closV  (a : arg) (b : body) (e : env) ]
+  [ boxV   (v : Value)                    ]
+)
+
+Como temos o STORAGE, agora, precisaremos passá-lo 
+de um lado a outro. Quando criamos o environment 
+dinâmico, ficávamos passando-o de um lado a outra,
+o que nos gerava as consequências indesejáveis de
+anteriormente. Mas, agora, o STORAGE será passado.
+Na realidade, quando o STORAGE é uma memória, ele
+não seria "passado", mas seria de acesso global.
+Retornar o STORAGE será passar, de um lado para
+outro, "momentos" do STORAGE.
+
+Como ficaria o interpretador? Como só temos um 
+valor de retorno, e precisamos passar Valor + 
+Storage, então criamos o Result:
+
+(define-type Result
+    [ v*s (v : Value) (s : Storage) ]
+)
+
+(define (interp [expr : ExprC] [env : Env] [sto : Storage]) : Result
+    ...
+    ; Para o sequenciamento, precisamos usar um truque: como podemos
+    ; modificar o storage em uma delas, devemos passar a possível 
+    ; mudança de estado para a próxima operação. Esta opção é uma 
+    ; forma de "serialização". Não é a única alternativa. As expressões
+    ; poderiam não ter consciência da mudança de storage, o que as 
+    ; tornaria paralelizáveis. Porém, o primeiro caso é mais simples.
+    
+    [ seqC (b1 b2)
+        ( type-case Result (interp b1 env sto)
+            [ v*s (v-b1 s-b1) (interp b2 s-b1)])
+    ]
+    ; A solução acima pode ser usada para a soma e o produto.
+    ; O type-case no Result é só um truque esperto para que 
+    ; peqguemos o storage do primeiro argumento.
+)
+
+Precisaremos, agora, de uma forma de criar novos boxes. Mas, para 
+isso, devemos ARMAZENAR no Storage, usando como "chave" da "tabela
+de símbolos" uma posição livre. Como obter esta posição livre? Uma
+forma simples é usar um CONTADOR. Mas, aí, temos um problema de 
+autorreferência: precisamos de um box para armazenar qual a quantidade
+de boxes. Por sorte, temos o Racket por trás, e podemos usar um 
+contador DELE como auxiliar.
+
+(define new-loc       < Define um nome para a função anônima
+    (let ([n (box 0)] < Cria variáveis para nossa closure
+        (λ ()                                 < A closure, usando a
+            (begin                            < variável 'n' definida
+                (set-box! n (+ 1 (unbox n)))  < no let, serve como 
+                (unbox n))                    < "contador" para novos
+    )))                                       < endereços na linguagem
+)
+
+Operações da caixa no interpretador
+
+(define (interp [expr : ExprC] [env : Env] [sto : Storage]) : Result
+    [boxC (a)
+        (type-case Result (interp a exv sto)
+            [v*s (v-a s-a)
+                (let ([where 
+
+    [appC (f a)
+      (type-case Result (interp f env sto) ; acha função
+        [v*s (v-f s-f)
+          (type-case Result (interp a env s-f) ; argumento com o 
+                                                 sto modificado
+            [v*x (v-a s-a)
+              (let ([where (new-loc)]) ; aloca função
+                (interp closV-body c-f) ; corpo
+                  (extend-env (bind (closV-arg v-f) where)
+                  ...
+)
+
+========================================================================
+"Questões filosóficas"
+* A ordem com que são realizadas as operações muda a semântica. Também,
+  ter INDEPENDÊNCIA ajuda a paralelizar (independência é a grande
+  chave).
+* O Store é, em princípio, dinâmico, mas o Environment não. O ESCOPO é
+  definido pelo Environment, o ESTADO, pelo Storage. Essa diferença é
+  chave.
+* Na nossa implementação em Racket, o override-storage coloca uma 
+  nova lista na frente - o que é extremamente ineficiente. Se fizermos
+  uma busca + sobrescrição, teremos uma economia. Outra questão é
+  que, ao sairmos de um escopo, acabamos deixando várias associações.
+  Essa memória, teoricamente, ainda está alocada. De tempos em tempos,
+  devemos "limpar" o Storage procurando por alocações sem associação.
+  Essa é a COLETA DE LIXO (GARBAGE COLLECTION).
+* Às vezes, porém, não queremos APAGAR os valores antigos. Isto pode
+  ser útil para que possamos manter um LOG das modificações, e desfazer
+  operações. Este conceito é chamado de STM (Software Transition Memory).
