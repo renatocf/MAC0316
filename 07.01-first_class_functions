@@ -89,7 +89,20 @@ fazer um 'desugar' na ExprC do argumento
 
 (define (lookup [for : symbol] [env : Env]) : Value
     (cond
-        (empt? env) (error 'error msg')
+        ; Base da recursão: lista vazia, não achamos o elemento
+        (empt? env) (error 'lokup with problems - error msg')
+        [else (cond
+            ; Procuramos no primeiro elemento. Se for, já o 
+            ; devolvemos.
+            [(symbol=? for (bind-name (first env)))
+                           (bind-val (first env))]
+            
+            ; Caso contrário, devolvemos o "cdr" do plai-typed
+            ; o "rest", aplicando no lookup. É o passo da recursão
+            [else (lookup for (rest env))]
+        
+        )] ; else cond
+))
         
 (define (parse [s : s-expression]) : ArithS
   (cond
@@ -206,7 +219,20 @@ Nosso tipo de retorno será, a partir de agora:
 
 (define (lookup [for : symbol] [env : Env]) : Value
     (cond
-        (empt? env) (error 'error msg')
+        ; Base da recursão: lista vazia, não achamos o elemento
+        (empt? env) (error 'lokup with problems - error msg')
+        [else (cond
+            ; Procuramos no primeiro elemento. Se for, já o 
+            ; devolvemos.
+            [(symbol=? for (bind-name (first env)))
+                           (bind-val (first env))]
+            
+            ; Caso contrário, devolvemos o "cdr" do plai-typed
+            ; o "rest", aplicando no lookup. É o passo da recursão
+            [else (lookup for (rest env))]
+        
+        )] ; else cond
+))
         
 (define (parse [s : s-expression]) : ArithS
   (cond

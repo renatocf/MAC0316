@@ -1,0 +1,16 @@
+Para criar um gerador na nossa linguagem, usarímos:
+
+(call
+    (call 
+        (func p
+            (call
+                (func m (call m m))
+                (func f (call p (func a (call (call f f) a)) ) )
+            )
+        )
+        ; Fibonacci:
+        (func g (func n (ifS n 1 (mulS n (call g (bminusS n 1))))))
+    )
+    ; Número para chamar o Fibonacci:
+    42
+)

@@ -100,27 +100,71 @@ Essa solução que encontramos usa, de certa maneira, uma recursão
 implícita. Usamos a alteração de ESTADO para criar a recursão. 
 Haveria alguma maneira de criarmos a recursão SEM STORE.
 
+; Um Fibonacci tradicional seria este. 
+; O que devemos colocar no passo para criar a recursão?
 (λ (n)
     (if (zero? n)
             1
             (* n (? (- n 1)))
 ))
 
+; Precisamos usar um "duplicador", chamado de GERADOR Y.
+; Ele consiste de uma fábrica de funções, que pode ser
+; recriada pelo corpo da função recursiva.
 (
-    (λ (m) (m m))
-        (λ (f)
-            >> (λ (g)
-            >>     (λ (n)
+                .- Este primeiro λ serve APENAS para dar o "chute
+    ............'  inicial" e começar o processo recursivo.
+    (λ (m) (m m))   <-----. Parâmetro desta closure
+        (λ (f)         ---' <-----. O que é gerado por esta closure:
+            >> (λ (n)          ---' nosso fibonacci
+            >>     (if (zero? n)
+            >>         1
+            >>         (* n ((f f) (- n 1)))
+            >> ))
+        )
+)
+
+; Para não precisarmos mais colocar o '(f f)' no meio da função,
+; e abstrairmos o código do fatorial de dentro do gerador Y, 
+; podemos chamar o (f f) de 'g'.
+; 
+(
+    (λ (m) (m m))   <-----. Parâmetro desta closure
+        (λ (f)         ---' 
+            >> (λ (g)      
+            >>     (λ (n)        
             >>         (if (zero? n)
             >>             1
             >>             (* n (g (- n 1)))
             >> )))
             (f f)
-))
-
-(λ (p)
-    (
-        (λ (f) (f f))
-        (λ () (p (λ (a) ((f f) a))))
     )
+)
+
+; Agora, podemos simplesmente chamar nossa função recursiva de 
+; de "p". Então, para usar o fatorial, bastará colocá-lo como
+; ARGUMENTO da nossa primeira função:
+(
+    (λ (p)
+        (
+            (λ (m) (m m))
+            (λ (f) (p (f f) ))
+        )
+    )
+    (λ (g) (λ (n) (if (zero? n) 1 (* n (g (- n 1)))
+)
+
+; A última versão, porém, entra em LOOP INFINITO, pois nossa 
+; função '(f f)' é calculada na hora em que a lista é interpretada.
+; Assim, já na nossa primeira execução, entraríamos em loop.
+; Para POSTERGAR a execução de (f f), criamos um dummy λ, que chama
+; a função (f f) com parâmetro 'a'. Mas isso não faz nada.
+(
+    (λ (p)
+        (
+            (λ (m) (m m))
+            (λ (f) (p (λ (a) ((f f) a))))
+        )
+    )
+    (λ (g) (λ (n) (if (zero? n) 1 (* n (g (- n 1)))
 )

@@ -1,0 +1,82 @@
+ORIENTAÇÃO A OBJETOS
+======================
+
+Semânticamente, um objeto é o encapsulamento de uma ideia, para
+abstrairmos estes conceitos.
+
+Concretamente, podemos pensar em um objeto como uma coleção de 
+VALORES (dados) com métodos associadas a eles (funções).
+
+Em nossa linguagem, uma função é um tipo de primeira classe.
+Logo, se pudermos criar uma LISTA com valores, já podemos ter
+uma classe/objeto.
+
+Porém, precisamos ACESSAR estes valores: precisamos ter um SELETOR
+que associa um nome aos seus valores (uma TABELA DE SÍMBOLOS).
+
+Como estamos no contexto de uma linguagem funcional, usaremos como
+nossa TABELA DE SÍMBOLOS listas. Teremos mais duas estruturas:
+
+* No core, o objC:
+    { lista de nomes, lista de ExprC }
+    [ objC (ns : (listof symbol)) (es : (listof exprC)) ]
+     
+* Para termos um objeto concreto, usamos um objV:
+    { lista de nomes, lista de Valores }
+    [ objV (ns : (listof symbol)) (vs : (listof Value)) ]
+
+Dado um objV, precisaremos ter uma maneira de conseguir o valor
+específico de UM ARGUMENTO dentro da closure. Para tanto, usaremos
+o 'msgC' no Core (vindo da ideia do Smaltalk que "enviamos uma 
+mensagem" ao objeto para requisitar um de seus argumentos). Ela
+ficaria:
+    
+    [ msgC (o : ExprC) (n : symbol) ]
+
+Mas, no açúcar, poderíamos adicionar um pouquinho mais: a aplicação,
+para quando tivermos um argumento que for uma closure (como o->n(a) 
+ou o.n(a)):
+    
+    [ msgC (o : ExprS) (n : symbol) (a : ExprS) ]
+
+Para o desugar, algumas modificações da implementação:
+    
+    ; Usaremos um map para percorrer a LISTA de campos para,
+    ; então, desaçucaramos cada elemento.
+    [ objS   (ns es) (objC ns (map (λ e) (desugar e)) es) ]
+    
+    ; Faça desugar do objeto, selecione o campo 'n' com msgC
+    ; e então aplique o desugar de a em appC 
+    [ msgS   (o n a) (appC (msgC (desugar o) n) (desugar a)]
+
+Interpretador, sem STORE (porque não o estaos usando):
+    
+(define (interp [a : ExprC] [env : Env]) : Value
+  (type-case ExprC a
+    ...
+    [objC (ns es) (objV ns (map (λ (e) (interp e env)) es)) ]
+    [msgC (o n)   (lookup-msg n (onterp o env))] ; seletor
+  )
+)
+
+(define (lookup-msg [n : symbol] [o : obj]) : Value
+    (type-case Value o
+        [objV (nomes valores)
+            (cond 
+                (empt? nomes) (error 'Argument does not exist')
+                [else (cond
+                    ; Procuramos no primeiro elemento. Se for, já o 
+                    ; devolvemos.
+                    [(symbol=? n (first nomes))
+                         (bind-val (first valores))]
+                    
+                    ; Caso contrário, devolvemos o "cdr" do plai-typed
+                    ; o "rest", aplicando no lookup. É o passo da recursão
+                    [else (lookup-msg
+                        n (objV (rest nomes) (rest valores))
+                    )]
+                
+                )] ; else cond
+            )
+        [else (error 'lookup error')]
+))
