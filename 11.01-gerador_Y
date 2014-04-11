@@ -1,4 +1,4 @@
-Para criar um gerador na nossa linguagem, usarímos:
+Para criar um combinador na nossa linguagem, usarímos:
 
 (call
     (call 

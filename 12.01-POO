@@ -1,0 +1,165 @@
+
+Até agora, usávamos o plai-typed com várias estruturas sobre ele.
+Agora, vamos MUDAR e usar um SUBCONJUNTO do próprio Racket para 
+tornar mais rápido.
+
+Nossa nova definição de objeto será usando o objeto como um 
+"multiplexador": basicamente, ele será um λ que recebe como parâmetro 
+um NOME DO MÉTODO. Deste nome, virá uma closure (o "corpo" da função)
+e poderemos aplicar o método.
+
+(define (o-constr-1 x)
+    (lambda (m)
+        (case m
+            [(addX) (lambda (y) (+ x y))]
+)))
+
+Os atributos do construtor (no caso, o x) estão salvos no Environment
+do primeiro lambda (com parâmetro do nome do método).
+
+Para facilitar a "aplicação" do método, usaremos novamente uma estrutura 
+chamada 'msg' (que estava em nosso antigo Core). Ele receberá 3
+argumentos: o objeto sobre o qual aplicaremos, o nome do método e 
+uma LISTA DE ARGUMENTOS para o método. Usando as características do
+Racket/Plai, essa lista de argumentos será passada usando o operador
+'.' da lista, que separa o "resto dos argumentos" como uma sublista
+própria.
+
+(define (msg o m . a)
+;            ^ ^   ^-- argumentos (o . separa o "resto da lista", 
+;            | '-- método          como o @_ do Perl)
+;           obj 
+    (apply (o 'm) a) )
+
+Primeiro, chamamos o objeto passando como parâmetro o NOME do método.
+Em seguida, usamos o operador APPLY, do Racket, que "quebra" a lista
+em pedaços e os passa como parâmetros separados para o método devolvido
+para aqueele dado objeto.
+
+O nosso 'msg' funciona, então, como um '.' do C/C++/Java/Python.
+
+A partir de agora, veremos vários conceitos de POO e suas implementações
+usando o Racket.
+
+MUDANÇA DE ESTADO
+===================
+
+Podemos criar mudanças de estado também (o que é bem útil, pela
+maneira do objeto):
+
+(define (o-state-1 count)
+    (lambda (m)
+        (case m
+            [(inc) (lambda () (set! count (+ count 1)))]
+            [(dec) (lambda () (set! count (- count 1)))]
+            [(get) (lambda () count)]
+)))
+
+MÉTODOS PRIVADOS
+===================
+
+Também conseguiremos ter métodos privados: para tanto, usamos o
+'let', que é (no fundo) um lambda e que, por levar a associação
+APENAS em seu Environment, terá o símbolo como local:
+
+(define (o-state-1 init)
+    (lambda (m)
+        (let ([count init])
+            (case m
+                [(inc) (lambda () (set! count (+ count 1)))]
+                [(dec) (lambda () (set! count (- count 1)))]
+                [(get) (lambda () count)]
+))))
+
+MÉTODOS ESTÁTICOS
+===================
+
+Para termos métodos/atributos estáticos, apenas precisamos mudar 
+a posição do "let":
+
+(define (o-state-2 init)
+    ; Se trocarmos o argumento por um λ, teremos um método estático
+    (let ([count 0])
+        (begin
+            (set! count (+ count 1))
+            (lambda (m)
+                (case m
+                    [(inc) (lambda () (set! count (+ count 1)))]
+                    [(dec) (lambda () (set! count (- count 1)))]
+                    [(get) (lambda () count)]
+)))))
+
+AUTORREFERÊNCIA
+===================
+
+E o problema da autorreferência? Devemos usar o truque de setar um
+objeto vazio (com valor 'dummy'):
+
+(define (o-self init)
+  ; Criamos o símbolo com um valor dummy
+  (let ([self 'dummy])
+    (begin
+      ; Setamos o objeto, agora, como sendo nosso lambda
+      ; seletor. Mas como o símbolo está definido, podemos
+      ; nos referenciar a ele mesmo.
+      (set! self
+        (lambda (m)
+          (case m
+            [(inc) (lambda () (set! count (+ count 1)))]
+            [(dec) (lambda () (set! count (- count 1)))]
+            [(get) (lambda () count)]
+            [(first)  (lambda (x) (msg self 'second (+ x 1)))]
+            [(second) (lambda (x) (+ x 1))]
+      )))
+      self
+)))
+
+AUTORREFERÊNCIA (com combinador-Y)
+===================================
+
+(define (o-self-no! init)
+  ; Criamos o símbolo com um valor dummy
+  (lambda (m)
+    (case m
+      ; Estamos passando os métodos como referência para si
+      ; próprio. Dado que ele é argumento, o símbolo pode ser
+      ; usado.
+      [(first)  (lambda (self x) (msg/self self 'second (+ x 1)))]
+      [(second) (lambda (self x) (+ x 1))]
+)))
+
+(define (msg/self o m .a)
+  (apply (o m) o a))
+
+LATE BINDING
+===================
+
+Podemos criar, também, uma chamada em tempo de execução (late binding).
+Ela surge naturalmente, pois BUSCAMOS o nome de um método, dentro do
+objeto, durante o tempo de execução. No exemplo seguinte, de uma 
+árvore, NÃO TEMOS garantia que o método 'add' existe. Porém, a
+busca pelo nome na nossa "tabela" de símbolos é o late binding.
+
+; nó externo (vazio)
+(define (mt)
+    (let ([self 'dummy])
+        (begin 
+            (set! self
+                (lambda (m)
+                    (case m
+                        [(add) (lambda () 0)] ; retorna 0
+))))))
+
+; nó interno (com valor)
+(define (node v l r)
+    (let ([self 'dummy])
+        (begin 
+            (set! self
+                (lambda (m)
+                    (case m
+                        [(add) (lambda () (+ v  ; soma filhos esq/dir
+                                            (msg l 'add) 
+                                            (msg r 'add)
+                        ))]
+            )))
+)))
