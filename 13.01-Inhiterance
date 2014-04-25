@@ -1,0 +1,149 @@
+HERANÇA
+=========
+
+* métodos ↔ nomes
+    - Conjunto finito e fixo ou não;
+    - Nomes podem ser estáticos ou dinâmicos.
+
+    .----------.--------------.------------.
+    | conjunto |     fixo     |  variável  |
+    |   nome   |              |            |
+    |----------|--------------|------------|
+    | Estático |     Java     |  --------  |
+    |          |              |  --------  |
+    |----------|--------------|------------|
+    | Dinâmico | Introspecção | linguagens |
+    |          |  (Reflexão)  | de  script |
+    '----------'--------------'------------'
+    
+    Quando temos um conjunto de métodos fixos, com nomes dinâmicos, 
+    temos uma analogia ao Reflections do Java, em que podemos acessar
+    um campo de uma classe usando uma string. No caso acima, tratamos
+    apenas de métodos, mas a introspecção é mais poderosa que isso.
+    
+    Usar métodos da maneira variável, com um conjunto dinâmico, é
+    comum a linguagens de script como Perl e Python. Em ambos, o 
+    objeto é representado por um HASH com chave sendo string e 
+    valor uma variável ou método. Poderíamos ter mais de uma 
+    chave associada ao objeto, e mesmo criar novos métodos durante
+    a execução.
+    
+    Nesta disciplina, trataremos principalmente do conjunto estático
+    e fixo, comum às linguagens compiladas.
+    
+    A versão estática/variável não faz tanto sentido - de que adianta
+    podermos definir vários métodos, se não pudermos colocar novos 
+    nomes? É mais simples tomar o caminho estático/fixo e/ou o 
+    dinâmico/variável.
+    
+    Em nossa sub-linguagem do Racket, como identificar qual o método?
+    
+    (define o-e
+        (λ (m)
+            (case m ; para idntificar os símbolos
+                [f1  (λ (a) ...)]
+                [g42 (λ (b) ...)]
+                [else (error "Method not found")]
+    )))
+    
+    E para chamar, usamos:
+    (msg o-e 'f1 13) → desaçucarado para ((o-e 'f1) 13)
+    
+    No else acima, temos um erro. Mas o que precisaríamos se quiséssemos
+    herança? Simples! Bastaria chamarmos o método do pai. Assim, 
+    sequiríamos uma hierarquia até a sua raiz. A alteração ficaria:
+    
+    (define o-e
+        (λ (m)
+            (case m ; para idntificar os símbolos
+                [f1  (λ (a) ...)]
+                [g42 (λ (b) ...)]
+                [else (father m)]
+    )))
+    
+* Construtores em Herança
+    
+    Para criarmos definitivamente Herança, precisamos ter uma 
+    referência/apontador para o 'pai' do objeto. Mas ao criarmos 
+    o objeto filho, não temos o objeto pai ainda. Para fazermos a
+    construção, precisaremos de um argumento ADICIONAL no construtor
+    de um objeto: o construtor da classe PAI. Com ele, poderemos
+    começar construindo a classe pai e, depois, ir para a filha.
+    
+    (define (filho constr-pai a1 a2 ... an)
+        (let ([pai (constr-pai a1 a2 ... an)
+              [self 'dummy])
+            (begin
+                (set !self
+                    (λ(m)
+                        (case m
+                            [f1  (λ (a) ...)]
+                            [g42 (λ (b) ...)]
+                            ...
+                            [else (pai m)]  ; chamada de função para 
+                                            ; o método pai
+                    )))
+                self
+            )
+    ))
+    
+    Se em vez de um construtor do pai tivéssemos uma lista deles,
+    e na resolução do conflito usássemos um case (if-else), 
+    teríamos um esquema de HERANÇA MULTIPLA (e que pode gerar muita
+    dor de cabeça).
+
+* Protótipos
+    
+    Quando temos classes, cada vez que construímos um novo objeto
+    estamos fazendo toda a hierarquia de classes para o novo 
+    objeto. Porém, e se ao invés disso passássemos uma REFERÊNCIA
+    PARA UM OBJETO JÁ PRONTO? Essa é a ideia de PROTÓTIPO, que é 
+    mais abstrato que CLASSE. Vários 'clones' podem estar associados
+    ao mesmo protótipo, e depois se desassociarem dele.
+    
+    Essa é a forma pela qual JavaScript faz POO.
+
+* Busca por métodos
+    
+                      /\        ()      || 
+                      ||        /\      || 
+      Sair da classe  ||       /  \     || Sair de uma classe PAI
+      filha e ir para ||      /    \    || e buscar métodos na 
+      a classe pai é  ||     ()    ()   || filha é chamado de INNER
+      natural da      ||     /\     |   || 
+      herança         ||    /  \    |   || 
+                      ||   /    \   ()  || 
+                      ||  ()    ()      \/ 
+
+* Problemas de herança múltipla
+    
+    Quando temos HERANÇA MÚLTIPLA, temos um grande problema: nossa
+    árvore da hierarquia de classes se torna um GRAFO. E como um
+    grafo, podemos ter subcasos extranhos:
+    
+                       ()     O diamante é um caso
+                       ^^     bem patológico. 
+                      /  \    
+                     /    \   Deveríamos ter apenas
+                    ()    ()  1 ou 2 objetos da 
+                     ^    ^   classe pai de todos
+                      \  /    no nível 1?
+                       \/     
+                       ()     
+    
+    E como deveríamos percorrer o grafo? Busca em largura ou
+    profundidade?
+    
+* Mixin e Trait
+    
+    Uma solução para problemas de herança múltipla é fazer o MIXIN, que 
+    consiste em "injetar" métodos dentro de uma classe. De certa 
+    maneira, estamos pegando os métodos da classe filha e estamos 
+    substituindo/tirando da classe pai. É a solução adotada, por 
+    exemplo, por C++ para resolver seus problemas de herança múltipla.
+    
+    Ainda assim, poderíamos ter 2 mixin's para cada pai na herança
+    múltipla. E se ambos os ramos tivessem métodos de mesmo nome,
+    haveria conflito na hora de montar a classe final. TRAIT surgiu
+    para os compiladores gerarem erro se isso ocorrer. Sem ele, o
+    compilador tenta resolver de alguma maneira.
