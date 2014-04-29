@@ -1,0 +1,122 @@
+HOSPEDEIRO
+============
+
+Quando construímos nossa linguagem, criamos vários níveis:
+1) Linguagem "Açucarada" (Sugar);
+2) Linguagem Central     (Core);
+3) Linguagem Hospedeira  (Racket);
+
+Ao desenvolvermos uma linguagem, de forma geral, utilizamos alguma
+plataforma/linguagem "hospedeira", sobre a qual a nova linguagem 
+será feita. No caso de linguagens compiladas, ela pode ser a própria
+máquina ou máquinas virtuais. No caso de linguagens interpretadas, é
+a linguagem na qual foi feito o interpretador.
+
+Quando definimos o valor, tínhamos:
+(define-type Value
+    [numV  (n : number)]
+    [closV (a : symbol) (b : body) (e : env)]
+)
+
+numV usa todos os tipos do Racket (hospedeiro), a fim de facilitarmos
+a construção da linguagem - já que ela suporta inteiros, ponto
+flutuante, complexos e frações. Será que poderíamos usar também o
+outro tipo - a closure - para fazer isto?
+
+Sim! E as modificações são simples:
+
+* Primeiro, no Value:
+(define-type Value
+    [numV  (n : number)]
+    ; A closure será a própria closure do Racket.
+    ; Ela simplesmente pega um valor e o retorna.
+    ; O argumento e o ambiente estão implicitamente 
+    ; salvos dentro do próprio lambda.
+    [closV (f : (Value -> Value)]
+)
+
+* Em segundo lugar, no interpretador:
+    [lamC (a b) (closV (lambda (arg-val)
+                    (interp
+                        (extend-env (bind a arg-val)
+                            (
+
+Estamos implementando uma linguagem funcional - subconjunto do 
+Lisp/Scheme/Racket - numa linguagem funcional. E, por esse motivo,
+podemos delegar muito para a linguagem hospedeira. Mas isso pode
+trazer vantagens e desvantagens:
+
+* Se tivéssemos uma linguagem hospedeira e DE SUPERFÍCIE diferentes,
+  muitas dificuldades poderiam existir. Por exemplo: 
+    - Se a linguagem de superfície tivesse lazyness, e a linguagem
+      hospedeira, eager, uma execução válida no ambiente lazyness
+      poderia ser inválida no contexto eager;
+    - Esse problema traz outro: as mensagens de erro, válidas numa
+      linguagem (por exemplo, divisão por 0 executada na eager, mas
+      não executada na lazy) poderia não ser na outra. Tanto da 
+      hospedeira para a de superfície, como vice-e-versa.
+
+* A dependência da linguagem hospedeira pode QUEBRAR a linguagem
+  de superfície, se as características da hospedeira se alterarem
+  com o tempo.
+
+ENVIRONMENT COM LAMBDAS
+=========================
+
+Fizemos a alteração de trocar os closV de implementação de forma
+prática para uma implementação usando o hospedeiro Racket.
+
+Em nossa linguagem, todoa a parte de Environment estava encapsulada.
+Como seria possível trocar o Environment como lista de associações
+e usar lambdas?
+    
+Definindo formalmente:
+    Env     -> λ (symbol -> Value)
+    mt-env  -> λ ERRO
+    
+O environment, para cada símbolo, nos devolverá um valor. Por outro
+lado, mt-env deverá retornar um ERRO, dado um símbolo - pois ao tentar
+achar qualquer coisa num environment vazio, sempre haverá nada para
+retornar.
+
+Então:
+(define (mt-env [name : symbol])
+    (error 'lookup: did not find')
+)
+
+; Temos aqui duas closures: uma do extend-env, que recebe dois
+; argumentos (binding e o environment), e o lambda que será retornado.
+; 
+; Ao criarmos este novo lambda, temos uma closure - o binding 'b' e
+; o environemnt 'e' na função na qual estão inseridas ficam armazenadas
+; no ENVIRONMENT DO CLOSURE DO RACKET. Toda vez este lambda, 
+; representando o Environment, tiver um símbolo, ele busca no 
+; seu próprio binding. Caso contrário, ele busca no environment que
+; existia quando ele foi criado.
+; 
+; Esquematicamente, os environments mais complexos são:
+;
+; ..........................    
+; .....................    |    
+; ................    |    |    Temos, aqui dentro, a nossa 
+; ...........    |    |    |    "LISTA DE ASSOCIAÇÕES". Porém,
+; ......    |    |    |    |    ela está MASCARADA dentro das
+; |    |    |    |    |    |    chamadas recursivas dos lambdas
+; | b1 | b2 | b3 | b4 | b5 |    do Racket. Para um dado environment
+; |    |    |    |    |    |    e, o binding b1 e o environment e1
+; '....'    |    |    |    |    com os quais ele foi construído
+; ..........'    |    |    |    estão guardados DENTRO do environment
+; ...............'    |    |    do próprio closure.
+; ....................'    |    
+; .........................'    
+; 
+(define (extend-env [b : Binding] [e : Env])
+    (λ ([name : symbol]) : Value
+        (if (symbol=? name (bind-name))
+            (bind-val b)
+            (lookup name e)
+)))
+
+(define (lookup [name : symbol] [e : Env]) (e name))
+
+Esquematicamente

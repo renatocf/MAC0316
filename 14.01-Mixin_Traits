@@ -1,0 +1,99 @@
+HERANÇA MÚLTIPLA
+==================
+
+    (D)    | A herança múltipla pode ser muito útil, para que o objeto
+     ^     | seja de duas características. Porém, em casos como ao lado
+    / \    | (herança diamante), a maneira pela qual ocorra a busca e 
+  (B) (C)  | herança de métodos pode acabar produzindo comportamentos
+   ^   ^   | diferentes. Sâo necessárias várias heurísticas para que
+    \ /    | a herança múltipla funcione.
+    (A)    | 
+
+MIXIN
+=======
+
+Por causa de todos os problemas que podem ocorrer com a herança
+múltipla, muitas linguages a evitam. Para, porém, poder admitir vários
+comportamentos distintos, faz-se a herança simples + alguma coisa.
+
+ (B)       | Uma das formas de contornar a herança múltipla é o 
+  ^   M    | MIXIN. O Mixin faz uma INJEÇÃO de métodos/atributos já 
+  |  (≡ )  | definidos dentro dele na classe. A diferença da herança
+ (A) -'    | é que UM MIXIN NÃO PODE TER CLASSE PAI. Assim, evita-se
+           | a situação do diamante (o Mixin é como uma raiz de uma
+           | hierarquia de classes).
+
+Podemos fazer uma certa "implementação" com a seguinte notação:
+
+    class C extends B ; Classe com herança
+    classext E { }    ; Mixin
+    C = E(B)          ; C é uma extensão de B com o Mixing E
+
+Mas e se colocássemos vários Mixin na classe? Se houvesse métodos com 
+a mesma assinatura, haveria CONFLITO. Por isso os Mixin ainda podem
+dar problema.
+
+As interfaces, como em Java, são um conceito mais FRACO de Mixin - 
+não tem definições de métodos e nem atributos não estáticos/constantes.
+
+TRAITS
+========
+
+Traits 
+    - É como o mixin, mas não implementa estado (sem variáveis);
+    - Conflitos de nome/assinatura precisam ser resolvidos 
+      explicitamente (nomes de funções iguais precisam de 
+      desambiguação);
+    - Funciona como código "inline" (flattening).
+
+Os traits funcionam como se estivéssemos dando um #include do C/C++
+dentro de uma classe. Um exemplo seria:
+
+<?php 
+    class SayHello {
+        public function sayHello() {
+            echo "Hello";
+        }
+    }
+    
+    trait SayWorld {
+        public function sayHello() {
+            super::sayHello();
+            echo "World";
+        }
+    }
+    
+    class MyHelloWorld extends Base {
+        use SayWorld;
+    }
+    
+    $o = new MyHelloWorld();
+    $o.sayHello();
+    
+    # Não haveria conflito, pois o trait só está fazendo uma 
+    # redefinição do método. A classe pai e o trait não conflitam.
+?>
+
+E como, em PHP, resolveríamos os conflitos de forma "explícita"?
+
+<?php
+    trait A {
+        public function smalltalk { echo "a"; }
+        public function bigtalk   { echo "A"; }
+    }
+    
+    trait B {
+        public function smalltalk { echo "b"; }
+        public function bigtalk   { echo "B"; }
+    }
+    
+    class Talker {
+        use A, B {
+            B::smallTalk insteadof A;
+            A::bigTalk   insteadof B;
+            B::bigTalk   as talk;
+            # A partir de agora, o smallTalk virá de B, o
+            # bigTalk de A e o bigTalk de B poderia ser 
+            # chamado usando o novo nome 'talk'.
+    }
+?>

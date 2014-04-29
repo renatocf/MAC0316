@@ -1,0 +1,90 @@
+
+Vamos discutir algumas ideias, sem implementar explicitamente na
+linguagem, formas de gerenciamento de memória.
+
+Fizemos duas implementações:
+* Usando 'box', cuja manipulação era explícita;
+* Usando variáveis, que eram ENDEREÇOS nos quais estavam armazenados
+  os conteúdos.
+
+Numa arquitetura de 32 bits, mantemos para cada função um FRAME,
+que funciona como:
+    
+    |            |  ^    :  Essa técnica é interessante, mas 
+    |            |  |    :  nem sempre temos espaço suficiente,
+    |            |  |    :  ou precisamos de espaço em Runtime.
+    |------------|  |    :  O espaço em Runtime é alocado diretamente
+    | parms      |  |    :  do Storage:
+    |------------|  |    :  
+    | return     |  |    :  | | | | | | | | | | | | | | | | | | | | | |
+    |------------|  |    :  '---------------'     '-----'       '-----'
+    | old_base   | -'    :  
+    |------------|       :  O malloc do C vai ao SO e pede uma seção 
+    | local vars | <.    :  de memória. Ao longo do tempo, isso pode
+    |------------|  |    :  ser problemático, pois causa fragmentação
+    |    ...     |  |    :  da RAM (o mesmo pode ocorrer no disco). 
+                         :  É necessário liberar memória - e para isso
+  Essas variáveis        :  usa-se o 'free'. 
+  locais eram chamadas   :  
+  de 'automáticas'.      :  Uma forma de automatizar este novo processo
+  Podem ser criadas e    :  é a Garbage Collection, em suas várias
+  destruídas facilmente. :  formas. Um Garbage Collector precisa ter:
+                         :  
+                         :  * Robustez (soundness):
+                         :    Não liberar memória antes da hora.
+                         :  * Completude (compreteness):
+                         :    Não liberar tarde demais.
+                         :  * Rapidez (speedy):
+                         :    Ser rápido (sempre importante).
+                         :  
+                         :  Não é possível ter os 3 ao mesmo tempo.
+                         :  Em geral, as linguagens escolhem 2: 
+                         :  a robustez e a velocidade (a falta de 
+                         :  memória em geral é menos comum).
+                         :  
+
+FORMAS DE GERENCIAMENTO AUTOMÁTICO
+====================================
+
+Existem dois métodos principais para fazermos Garbage Collection:
+
+* Contagem de Referências:
+    Simplesmente, para cada nova alocação, cria-se um contador 
+    adicional com a memória. Para cada ponteiro novo, incrementa-se 
+    o contador. Se o contador chegar a 0, não enchergamos mais, e
+    então liberamos a memória.
+
+* Garbage Collection:
+    O programa monta um GRAFO, composto em duas partes: um 
+    "root set", que é o conjunto de variáveis que estão em todos 
+    os environments disponíveises no momento da Garbage Collection, 
+    e o "live set", que é o conjunto de memória apontaad por todas
+    estas variáveis.
+    
+    Forma-se, com isso, uma árvore:
+            
+    Root set                * * * * * * * * * *
+    -----------------------/-\-----/-----\---\---------------------
+    Live set     *--*     *   *   *       *   *
+                     *     \ /     \     /
+                  *         *       *---*
+    
+    Os ciclos são ignorados. Simplesmente, parte-se do Root Set e
+    vai-se para o Live Set. Tudo que não estiver sendo apontado pelo
+    Root Set vai para o Live Set.
+    
+    Descobrir quem está no Root Set é difícil. É como se fosse 
+    necessário provar quem está no Root Set. Mas ao exigir essa
+    introspecção, e dado que um programa é um sistema formal 
+    (máquina de Turing), cai-se no Teorema da Incompletude de Gödel.
+    Ou seja: para ganhar-se mais completude, perde-se robustez.
+    
+    Para fazer tudo isso, o Garbage Collection precisa ver:
+    1) O tipo e representação de todos os objetos/estruturas;
+    2) Não pode ocorrer:
+        - Referências primordiais fora do root set;
+        - Referências fora de pontos específicos (cast de tipos
+          para referências).
+
+    C/C++ tem problemas com Garbage Collection porque há os casts
+    para tipos como ponteiros. Isso já é uma grande dificuldade.
