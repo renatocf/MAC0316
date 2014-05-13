@@ -1,0 +1,233 @@
+AÇÚCAR
+========
+
+O processo de construção de açúcar permite transformar uma sintaxe 
+em outra:
+            sintaxe A ----------------------> sintaxe B
+                                               (core)
+
+O primeiro exemplo que utilizamos para açúcar sintático foi:
+        (let (var val) body) --> ((λ (var) body) val)
+
+Mas assim como conseguimos criar regras de açúcar diretamente na 
+linguagem açucarada, também poderíamos fazê-lo EM TEMPO DE INTERPRETAÇÃO
+(on the fly).
+
+No Racket, existe essa opção, por meio dos comando:
+    (define-syntax macro regra)
+                         ^^^^^- { syntax-rules
+                                { syntax-case
+
+Criaremos um "novo let". Para que o próprio Racket não se confunda, 
+usaremos o nome "my-let" com números 1,2,... para eles.
+
+(define-syntax my-let-1
+    (syntax-rules () ; arg para definir associações locais às regras
+        
+        ; Lista de regras de tradução
+        [(my-let-1 (var val) body) ((lambda (var) body) val)]
+        
+        ; Cada uma das regras trabalha como MACRO - nenhuma 
+        ; modificação é criada e só se traduz de um para outro.
+))
+
+Podemos aceitar argumentos como listas de qualquer tamanho, usando
+o símbolo "...". Ele funciona como os TEMPLATES VARIÁDICOS do C++ 
+ou as funções com múltiplos argumentos do C:
+
+                    ..----------------------------..-------------..
+                    \/                            /\             /\
+         Constroi 'n' pares (var val)       Pega 'n' vars  Pega 'n' vals
+                _____________                 _________       ________
+    [(my-let-2 [(var val) ...] body) ((lambda (var ...) body) val ...)]
+
+O Dr. Racket tem a opção MACRO-STEPPER, que mostra qual o resultado das
+EXPANSÕES DE MACROS criadas pelo define-syntax. Entretanto, nem sempre
+o resultado pode ser o esperado, pois o Racket pode OTIMIZAR os
+argumentos variádicos para seus próprios lambdas.
+
+PROBLEMAS
+-----------
+
+Os macros são interessantes, mas podem gerar problemas parecidos com as
+macros de C/C++: os erros não são checados quando definimos as novas
+regras sintáticas. Por exemplo
+
+* Racket                          | * C/C++
+                                  | 
+; Em vez de um símbolo para       | // Definição do Macro em C ou C++.
+; argumento, colocamos um número  | // Não usamos paerênteses suficientes
+(my-let-1 (1 5) 1)                | #define SQUARE(X) X*X
+                                  | 
+; A tradução ficaria:             | // A expressão:
+((λ (1) 1) 5)                     | SQUARE(2+2);
+                                  | 
+; O erro, porém seria:            | // Seria traduzida em:
+    lambda: not an identifier,    | 2+2*2+2
+    identifier with default, or   | 
+    keyword in: 1                 | // O resultado 8 é diferente de 16
+
+SYNTAX-CASE
+=============
+
+Poderemos usar,agora, o SYNTAX-CASE, mais geral, para que façamos
+regras válidas.
+
+Ele receberá uma lista de pares [A, B], com:
+* A, o padrão a ser identificado na linguagem;
+* B, cujo VALOR INTERPRETADO será associado a A;
+
+O fato dele associar o VALOR INTERPRETADO da expressão B pode ser 
+ruim, caso queiramos apenas devolver uma expressão. Para isso, usaremos
+um truque relacionado ao operador #' (à frente).
+
+; Associamos o nome 'my-let-3' a um símbolo x. O 'x' é um auxiliar, 
+; que permite chamar RECURSIVAMENTE a estrutura do define-syntax.
+; Isso é importante porque o símbolo "my-let-3" poderia ser utilizado
+; dentro do pattern ou valor. Temos, então, este auxiliar.
+(define-syntax (my-let-3 x)
+    
+    ; O 'x' de acima é passado para o syntax-case, como um 'this'.
+    (syntax-case x ()
+        [
+         ; Padrão a ser identificado
+         (my-let-3 (var val) body) 
+         
+         ; O símbolo #' serve para que o syntax-case devolva a 
+         ; própria expressão, e não o resultado da execução dela.
+         ; Em geral, para não executarmos, usamos apenas '. Porém,
+         ; ' transforma uma expressão em s-expression. O syntax-case
+         ; EXIGE que o argumento seja um PEDAÇO DE SINTAXE - e o
+         ; operador #' é o que evita a execução e devolve um peraço
+         ; de sintaxe. O #' será necessário em todos os casos em que
+         ; quisermos usar um pedaço do pattern, sem executá-lo (o que
+         ; seria, inclusive, impossível, pois ele não existe ainda
+         ; dentro da macro).
+         #'((lambda (var) body) val)
+        ]
+))
+
+O my-let-3 faz exatamente o mesmo que o my-let-2, mas usa o syntax-case.
+Entretanto, o syntax-case tem uma segunda forma que pode ser útil.
+Ele não receberá mais pares [A B], em que associa-se o padrão A 
+ao valor (B). Teremos como argumentos trincas [A P B], com:
+* A, o padrão;
+* B, cujo valor interpretado será associado a A;
+* P (predicado), as RESTRIÇõES a serem avaliadas.
+
+(define-syntax (my-let-4 x)
+    (syntax-case x ()
+        [
+         ; Padrão a ser identificado 
+         (my-let-4 (var val) body) 
+        
+         ; Predicado a ser avaliado
+         ; Se 'var' não for identificador, dará erro.
+         (identifier? #'var)
+         
+         ; Igual ao caso do my-let-3
+         #'((lambda (var) body) val)
+        ]
+))
+
+SYNTAX-CASE RECURSIVO
+=======================
+
+Vejamos um exemplo de syntax-case RECURSIVO. Para isso, vamos
+implementar uma forma de OR usando IF's recursivamente:
+
+(define-syntax (my-or-1 x)
+  (syntax-case x ()
+    ; Usamos um template variádico
+    [(my-or-1 e0 e1 ...)
+      #'(if e0
+            e0
+            (my-or-1 e1 ...))
+            ; Reusamos o template variádico com menos 1 argumento.
+            ; Como a lista é finita, uma hora a recursão para.
+))
+
+Esse comando dá um erro, porque no final não teremos mais como expandir
+o my-or-1. Consideremos o exemplo:
+                            (my-or-1 #f #t)
+
+O resultado da expansão seria:
+(if #f #f (my-or-1 #t))
+           ^^^^^^^-- (if #t #t (my-or-1))
+                                ^^^^^^^-- Sem argumentos, é desconhecido
+
+Precisamos adicionar uma nova regra ao syntax-case, para quando ele 
+tem 0 argumentos.
+
+(define-syntax (my-or-2 x)
+  (syntax-case x ()
+    [(my-or-2) 
+      #'#f]
+    [(my-or-2 e0 e1 ...)
+      #'(if e0
+            e0
+            (my-or-2 e1 ...))
+))
+
+Poderíamos adicionar um passo a mais, com apenas um argumento. O
+anterior já funciona, mas poderíamos adicionar um caso extra: apenas
+um argumento, em que o devolvemos.
+
+(define-syntax (my-or-3 x)
+  (syntax-case x ()
+    [(my-or-3) 
+      #'#f]
+    [(my-or-3 e0) 
+      #'e0]
+    [(my-or-3 e0 e1 ...)
+      #'(if e0
+            e0
+            (my-or-3 e1 ...))
+))
+
+Nesse caso, naturalmente, nunca entraremos no caso base my-or-3 vazio.
+Poderíamos retirá-lo, para dar erro de sintaxe, OU devolver falso nos
+casos errados.
+
+Considermeos agora o seguinte exemplo:
+(let ([blah #f])
+(my-or-3
+    (begin ((set! blah (not blah)) blah)
+    #f)
+)
+
+O resultado expandido será:
+(if (begin ((set! blah (not blah)) blah))
+    (begin ((set! blah (not blah)) blah))
+    (my-or-4 #f))
+
+O valor devolvido seria #f (errado!).
+
+Estamos DUPLICANDO código. Esse é um dos grandes problemas de macros:
+replicação desnecessária. E isso ocorre por causa do excesso de lazyness
+do código.
+
+Para resolvermos, podemos calcular primeiro, e associar o valor
+calculado a um símbolo:
+
+(define-syntax (my-or-4 x)
+  (syntax-case x ()
+    [(my-or-4) 
+      #'#f]
+    [(my-or-4 e0) 
+      #'e0]
+    [(my-or-4 e0 e1 ...)
+      #(let ([v e0])
+        '(if e0
+             e0
+             (my-or-4 e1 ...))
+))
+
+Ainda assim, temos dois potenciais problemas:
+* O e0 poderia estar em um environment diferente, e o seu valor não
+  estar definido ou estar definido de forma diferente.
+* O cálculo do primeiro e0 poderia causar uma mudança de estado - e esta
+  não seria passada para o corpo do if. A mudança de estado já estaria
+  feita antes, e o resultado poderia ser diferente. Uma outra
+  consequência da passagem de estado. O caso do begin acima não era o
+  desejado. Porém, se ele fosse, não seria coberto.
