@@ -224,10 +224,26 @@ calculado a um símbolo:
 ))
 
 Ainda assim, temos dois potenciais problemas:
-* O e0 poderia estar em um environment diferente, e o seu valor não
-  estar definido ou estar definido de forma diferente.
 * O cálculo do primeiro e0 poderia causar uma mudança de estado - e esta
   não seria passada para o corpo do if. A mudança de estado já estaria
   feita antes, e o resultado poderia ser diferente. Uma outra
   consequência da passagem de estado. O caso do begin acima não era o
   desejado. Porém, se ele fosse, não seria coberto.
+
+* O e0 poderia estar em um environment diferente, e o seu valor estaria
+  de forma diferente. Por exemplo:
+    
+    (let ([e0 #t]) (my-or-4 #f e0))
+    
+    A expansão seria:
+    (let ([v #f])
+        if(#f) #f
+            (my-or-4 #f))
+    
+    Nesse caso, estamos CONFUNDINDO o environment externo com o
+    environment interno. O valor de e0 usado acaba sendo o de dentro,
+    e não o passado de fora.
+    
+    Bons sistemas de macro não confundem isso, pois usam tabelas
+    separadas para valores de argumentos e definições internas de
+    símbolos. Essas são chamadas as MACROS HIGIÊNICAS.

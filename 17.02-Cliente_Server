@@ -1,0 +1,151 @@
+ESTRUTURA CLIENTE SERVIDOR
+============================
+
+(define (read-number [prompt : string]) : number
+    (begin
+        (display prompt)             ; Mostra o prompt
+        (let ([v (read)])            ; Lê da stdin e associa a v
+            (if (s-exp-number? v)    ; Testa se é número
+                (s-exp->number v)    ; Converte para número
+                (read-number prompt) ; Se não funcionar, lê outro
+                                     ; número
+))))
+
+(display 
+    (+ (read-number "Fist number")
+       (read-number "Second number"))
+)
+
+Se estivéssemos numa arquitetura cliente-servidor, este programa simples
+de somar NÃO FUNCIONARIA. Você pediria o programa, o servidor enviaria a
+pergunta "First number" e, então, acabaria a conexão.
+
+CLIENTE-SERVIDOR COM MEMÓRIA
+------------------------------
+
+Precisamos quebrar o programa em DUAS PARTES: o primeiro pedido do
+número (requisição 1), e depois executar o pedido do segundo número
+(requisição 2). Até termos o segundo número, precisamos GUARDAR o 
+primeiro deles.
+
+Uma função que quebrasse poderia ser:
+
+(lambda (v1)
+  (display
+    (+ v1
+      (read-number "Second number")
+)))
+
+Guardamos v1 no environment do lambda e depois esperamos pelo segundo
+número aparecer.
+
+CLIENTE-SERVIDOR SEM MEMÓRIA
+------------------------------
+
+Mas essa solução usa memória. Se tivéssemos vários usuários, poderíamos
+ter muitos dados armazenados. No pior caso, isso se tornaria um ataque
+DDoS (Denial of Service), pois exauriríamos o recurso do servidor.
+
+Uma boa solução para contornarmos isso será criar uma ação que se
+interrompe, enquanto aguarda pelas respostas dos usuários. Para cada
+solicitação teremos um id único. Enviamos para o usuário um formulário
+que contém o id da ação a ser realizada. Quando ele enviar os dados, o 
+servidor executará a ação.
+
+; Como usaremos o hacket na maior parte de seus recursos, usaremos 
+; a feature de criar um HASH para manter a tabela de símbolos de 
+; ID_REQUISIÇÃO → PROGRAMA
+
+; O label para os processos serão números. 
+; A tabela será um hash vazio.
+(define-type-alias label number)
+(define table (make-hash empty))
+
+; A função read-number/suspend apenas pega uma ação "rest" e a
+; carrega na tabela de requisições.
+(define (read-number/suspend [prompt : string] rest)
+  
+  ; New label é uma simples função contadora
+  (let ([g (new-label)])
+    (begin
+      (hash-set! table g rest)
+      (display prompt)
+      (display " To enter it, use the action field label ")
+      (display g)
+)))
+
+; Esta ação é a "resposta", que envia o dado solicitado para o servidor.
+; Na analogia web, esta seria uma página com FORMULÁRIO, a ser submetido
+; ao servidor. Na resposta, teríamos o ACTION-FIELD, o label do hash que
+; marca ONDE ESTÁ A AÇÃO A SER EXECUTADA.
+(define (resume [f : label] [n : number])
+  ((sum-v (hash-ref table g)) n)
+)
+
+; A ação usando o read-number com suspensão fica:
+(read-number/suspend 
+  "First number"
+  (lambda (v1)
+     (display
+       (+ v1
+         (read-number "Second number"))))
+)
+
+; Para um esquema cliente-servidor mais robusto (no caso, que lesse os 
+; dois números via este sistema), precisaíamos usar duas solicitações.
+
+A representação das solicitações ficaria:
+
+            Servidor             |              Cliente
+=================================|====================================
+                                 |            
+   . read-number/interrupt  -----:----- label: 05
+   :                             |      form: Mande valor
+   :                             |            
+   :   table                     |      resume 05 42
+   : .----.--------------.       |           |
+   : |    |              |       |           |
+   : |    |              |       |           |
+   : |    |              |       |           |
+   : |    |              |       |           |
+   '>| 05 | rest         | <-----:-----------'
+     |    |  |           |       |            
+     |    |  |           |       |            
+     '----'--|-----------'       |            
+             ^                   |
+         read-number             |
+
+ESQUEMA CLIENTE-SERVIDOR COMPLETO
+-----------------------------------
+
+Há um problema: o lambda solicitando o v2 pede no servidor (o que não
+é realista). Para resolver, basta colocarmos uma solicitação dentro da
+outra:
+
+(read-number/suspend 
+  "First number"
+  (lambda (v1)
+    (read-number/suspend 
+      "Second number"
+        (lambda (v2)
+          (display
+            (+ v1 v2)
+)))))
+
+            Servidor             |              Cliente
+=================================|====================================
+                                 |            
+ ..- read-number/interrupt  -----:----- label: 05
+ : .-'                 ^    |    |      form: Mande valor
+ : :                   |    |    |            
+ : :   table           |    |    |      resume 05 42
+ : : .----.------------|-.  |    |           |
+ : : |    |            | |  |    |           |
+ : : |    |  sum       | |  '----:-----------:------ resume 03 0
+ : : |    |   ^        | |       |           |            |
+ : '>| 03 | rest2      | | <-----:-----------:------------'
+ :   |    |            | |       |           |
+ '-->| 05 | rest1 -----' | <-----:-----------'
+     |    |              |       |            
+     |    |              |       |            
+     '----'--------------'       |            

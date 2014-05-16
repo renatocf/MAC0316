@@ -1,0 +1,126 @@
+MACROS
+========
+
+Na aula passada, vimos uma "confusão" dos macros por causa do
+environment. A diferenciação entre ambos pode ser desejável, para que
+possamos fazer definições de macros RECURSIVAS ou com AUTORREFERÊNCIA.
+
+Os macros que evitam esse problema é um MACRO HIGIÊNICO, mas teria esse 
+novo problema. A implementação que daria este problema seria:
+
+; Definição de um objeto com autorreferência
+; usando a criação via macros.
+(define os-1
+    (object/self-1
+        
+        ; Este self dará um ERRO. O processador de macros do Racket
+        ; é higiênico. Logo, dentro do macro ele olhará se esse self
+        ; foi definido NESTE AMBIENTE. Ele não foi: logo, aparecerá o
+        ; erro do self não ser definido.
+        [first  (x) (msg self 'second (+ x 1))]
+        
+        [second (x) (+ x 1)]
+))
+
+; Como fazemos isso com macros agora?
+(define-syntax object/self-1
+  (syntax-rules ()
+    [(object [mtd-name (var) val] ...)
+        
+      ; Primeiro, associamos self com um símbolo qualquer. 
+      ; No caso, é um lambda que imprime que está vazio.
+      (let ([self (lambda (msg-name)
+                    (lambda (x) (error 'object "nothing here")))])
+          
+          ; Reassocia self com o lambda seletor dos métodos
+          (begin 
+            (set! self
+              (lambda (msg)
+                (case msg
+                  ; O macro cria, um lambda usando o nome do
+                  ; método, a variável do lambda e o corpo.
+                  ; Como pode haver vários métodos, estamos 
+                  ; fazendo de forma recursiva
+                  [(mtd-name) (lambda (var) val)]
+                  ...)))
+          self)
+      ) ;end let
+]))
+
+; O resultado do código expandido seria:
+(let ([self 'dummy])
+  (begin 
+    (set! self
+      (λ (msg)
+        (case msg
+          [(first  (λ (x) (msg self)) )]
+          [(second (λ (x) (+ x 1))    )]
+)))))
+
+Para contornarmos esse problema, poderíamos passar o 'self' como
+argumento para a macro. Dessa maneira, o símbolo ao ser usado dentro
+do contexto do uso da macro, quando ela for setada.
+
+; Por que esse self não dá problemas quando passado como argumento?
+(define os-2
+    (object/self-2 self ; O nome do próprio argumento deve ser passado
+                        ; como primeiro parâmetro.
+        [first  (x) (msg self 'second (+ x 1))]
+        [second (x) (+ x 1)]
+))
+
+(define-syntax object/self-2
+  (syntax-rules ()
+    [(object self [mtd-name (var) val] ...)
+        
+      ; Primeiro, associamos self com um símbolo qualquer. 
+      ; No caso, é um lambda que imprime que está vazio.
+      (let ([self (lambda (msg-name)
+                    (lambda (x) (error 'object "nothing here")))])
+          
+          ; Reassocia self com o lambda seletor dos métodos. Agora,
+          ; este é o self externo, e estamos afetando a tabela dos 
+          ; argumentos.
+          (begin 
+            (set! self
+              (lambda (msg)
+                (case msg
+                  [(mtd-name) (lambda (var) val)]
+                  ...)))
+          self)
+      ) ;end let
+]))
+
+Mas nem sempre seria desejável passar 'self' como argumento. Como evitar
+isso? Poderíamos usar um recurso adicional, suportado pelo Racket, que
+permite associar um símbolo DENTRO DA SINTAXE com um DE FORA DA SINTAXE.
+Dessa maneira, uma mudança de estado dentro da macro altera o espaço das 
+variáveis passadas como argumento para a macro. Assim, conseguiríamos
+sobrescrever o self (o que não acontecia na 1ª forma, pois o self estava
+em outra tabela de símbolos).
+
+(define os-3
+    (object/self-3
+        [first  (x) (msg self 'second (+ x 1))]
+        [second (x) (+ x 1)]
+))
+
+(define-syntax object/self-3
+  (syntax-case ()
+    [(object [mtd-name (var) val] ...)
+      (with-syntax ([self (datum->syntax x 'self)])
+        #'(let ([self (lambda (msg-name)
+                        (lambda (x) (error 'object "nothing here")))])
+            (begin 
+              (set! self
+                (lambda (msg-name)
+                  (case msg-name
+                    [(mtd-name) (lambda (var) val)]
+                    ...
+              )))
+              self
+            )
+          ) ; let
+      ) ; with-syntax
+    ] ; definição de objeto
+))
