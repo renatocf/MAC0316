@@ -1,0 +1,1510 @@
+TORRE DE HANÓI
+
+#lang racket
+(define (move here there) 
+    (display (string-append here " -> " there "\n"))
+)
+
+(define towers n out> >in <extra>)
+    (unless (zero? n)
+        (begin
+            (towers (- n 1) out> <extra> >in)
+            (move out> >in)
+            (towers (- n 1) <extra> out> >in)
+)))
+
+PROBLEMA DAS N-RAINHAS
+Exercício
+
+SIERPINSK
+(require 2htpd/image)
+
+@ let: define variáveis localmente, criando associações. Ex:
+@ (let ([a 42] [b 155]) (+ a b))
+@ 
+@ Mas esta forma não permitiria:
+@ (let ([a 42] [b a]) (+ a b))
+@ Porque eles só valeriam depois das definições.
+@ 
+@ Para o caso acima, existe o let*:
+@ (let* ([a 42] [b a]) (+ a b))
+@ 'a' já estaria definida assim que fosse dada sua definição.
+@ 
+@ Também podemos criar um let com nome.
+@ Este nome é um 'alias' disso.
+(let sierpinsk ([n 8])
+    (if (zero? n)
+        (triangle 2 'solid 'red)
+        (let ([t (sierpinski (- n 1))])
+            (freeze (above t (beside t t)))
+)))
+
+==================================
+
+Veremos agora uma linguagem TIPADA
+#lang play-typed
+
+Não temos mais 'car' ou 'cdr'. No lugar dela, usaremos a função
+'list' para definir o tipo listas e 'first' para conseguir o 
+'car' de um par e/ou uma lista. Ex:
+    
+    > (first (list 1 2 3))
+    - number
+    1
+
+No play-typed, o apóstrofe tem tratamento diferente:
+    > (+ 1 2)       @ É executado e recebemos o retorno
+    - number
+    3
+    
+    > '(+ 1 2)      @ Cria-se uma s-expression. Um tipo novo que
+                    @ poderá ser interpretado.
+    - s-expression
+    '(+ 1 2)
+    
+    > (list 1 2)    @ Uma sequência de números, de certo tipo.
+    - (listof number)
+    '(1 2)
+
+Para fazer o 'cast' entre s-expression e listas, precisamos usar
+o operador 's-exp->list'.
+
+Podemos fazer listas de listas:
+    > (list (list 1 2) (list 4 5 6 7)) @ Listas de listas, como em Python
+    - (listof (listof number))
+    '((1 2) (4 5 6 7))
+
+    > (list-ref (list 1 2 3 4 5 6) 3) @ Recupera um elemento de uma lista
+    - number
+    3
+
+    > (vector 1 2 3) @ Vector: Tem tamanho FIXO, não pode ser MODIFICADO
+                     @         e usualmente é mais rápido.
+    - (vectorof number)
+    '#(1 2 3)
+
+Com o plai-typed, podemos declarar tipos com 'define'. Para
+declarar EXPLICITAMENTE o tipo de um nome, colocamos de forma extra
+um ':':
+    > (define c "string")
+    - string
+    "string"
+    
+    > (define c : number 2)
+    - number
+    2
+    
+    > @ Já faz a verificação de tipagem previamente
+    > (define c : number "string")
+    - Erro
+
+Outra forma de lista, que na realidade age como uma struct de C/C++,
+é o 'value':
+    > (values 9 8 "outro")
+    - (number * number * string)
+    '#(9 8 "outro")
+    
+    > @ Usando values para 'declarar' vários lugares.
+    > (define-values (marca valor) (values "Prada" 3.50))
+    > marca
+    - string
+    "Prada"
+    > valor
+    - number
+    3.5
+    
+Fazendo funções:
+    
+    > (define (3* n) (* 3 n))
+    > (3* 8)
+    - number
+    24
+    
+    > @ Define a função com TIPO DE ARGUMENTO e TIPO DE RETORNO
+    > (define 3* [n : number]) : number (* 3 n)
+    
+    > ((λ ([x : number]) : number (+ x x) 21)
+    - number
+    42
+    
+    > @ A sintaxe abaixo funciona como um 
+    > (define mais2 : (number -> number) (λ(x) (+ x 2)))
+    > (mais2 89)
+    - number
+    91
+    > mais2
+    - (number -> number)
+    #procedure:...
+
+Ainda no plai-typed, existe o fechamento (em que a função leva o 
+contexto de algumas variáveis no seu ambiente com ela).
+
+==================================
+
+Core Language
+================
+
+Na aula passada, criamos uma primeira estrutura que mostrava como era
+uma aritmética simples, somadora de números. O tipo ArithC tinha 3
+possibilidades de construção: número (tipo primitivo, a base da
+recursão) ou, recursivamente, um plusC/multC com duas ArithC.
+
+(define-type ArithC                               multC
+  [ numC  (n : number) ]                          /   \ 
+  [ plusC (l : ArithC) (r : ArithC) ]         plusC   plusC
+  [ multC (l : ArithC) (r : ArithC) ]         /   \   /   \
+)                                           numC  numC numC numC
+
+Mas como poderíamos adicionar uma SUBTRAÇÃO (-)? Poderíamos criar um
+tipo diferente de Aritmética, que tivesse o tipo subtração:
+
+(define-type ArithS                               (- a b)
+  [ numS    (n : number) ]                           ↓
+  [ plusS   (l : ArithS) (r : ArithS) ]           bminusS
+  [ multS   (l : ArithS) (r : ArithS) ]            /   \   
+  [ bminusS (l : ArithS) (r : ArithS) ]         numS   numS
+)                                                   a     b
+
+Mas como poderíamos converter para a árvore de ArithS para ArithC?
+Poderíamos usar uma conversão:
+                     (- a b) → (+ a (* -1 b))
+
+A árvore gerada seria, então:
+    
+     plusC         | Chama-se o processo de introduzir a árvore mais 
+     /   \         | complexa de AÇÚCAR SINTÁTICO. Entretanto, não é 
+  numC   multC     | necessário ter que tornar a gramática do backend
+   a     /   \     | mais complexa. Para retirar o açúcar sintático,
+      numC   numC  | em geral cria-se uma função DESUGAR, que pega a 
+       -1     b    | árvore primária e torna-a mais simples.
+                   | 
+                   | Um exemplo tradicional de açúcar sintático é um 
+                   | FOR - que é convertido para um while.
+
+Quando criamos uma linguagem, temos uma GRAMÁTICA, que define as regras
+relacionadas à como a linguagem é lida pelo parser. A gramática segue 
+uma sintaxe própria. Esta é convertida para uma sintaxe abstrata: a 
+árvore com ArithS. Depois, para outra sintaxe abstrata, a que descreve
+a árvore de ArithC. Poderíamos ter quantos níveis de gramática fosse
+necessário.
+
+A nossa função desugar ficaria:
+(define (desugar [as : ArithS]) : ArithC
+  (type-case ArithS as
+    [ numS    (s)   (numC n) ]
+    [ plusS   (l r) (plusC (desugar l) (desugar r)) ]
+    [ multS   (l r) (plusC (desugar l) (desugar r)) ]
+    [ bminusS (l r) (plusC (desugar l) 
+                      (multC (numC -1) (desugar r)) ) ]
+))
+
+O interpretador é ainda o mesmo:
+(define (interp [a : ArithC]) : number
+  (type-case ArithC a
+    [numC (n) n]
+    [plusC (l r) (+ (interp l) (interp r))]
+    [multC (l r) (+ (interp l) (interp r))]
+
+O parser para o ArithS será
+(define (parse [s : s-expression]) : ArithS
+  (cond
+    [(s-exp-number? s) (numS (s-exp->number s))]
+    [(s-exp-list? s)
+      (let ([sl (s-exp->list s)])
+        (case (s-exp->symbol (first sl))
+          [(+) (plusS (parse (second sl)) (parse (third sl)))]
+          [(*) (multS (parse (second sl)) (parse (third sl)))]
+          ; agora temos o '-'
+          [(-) (bminusS (parse (second sl)) (parse (third sl)))]
+        [else (error 'parse "invali list input")]
+    ))]
+  [else (error 'parse "invalid input"')]
+))
+
+Para não precisarmos fazer conversões explícitas, podemos criar um
+'interpS', que já aceita um ArithS como entrada e intepreta:
+(define (interpS [a : ArithS]) (interp (desugar a)))
+
+Como poderíamos, agora, criar um - unário? Também podemos usar um 
+açucar sintático. Para isso, modifiquemos o ArithS:
+
+(define-type ArithS
+  [ numS    (n : number) ]                    
+  [ plusS   (l : ArithS) (r : ArithS) ]       
+  [ multS   (l : ArithS) (r : ArithS) ]       
+  [ bminusS (l : ArithS) (r : ArithS) ]       
+  [ uminusS (e : ArithS) ]                    
+)
+
+Podemos multiplicar qualquer expressão por -1. Teríamos, então, que
+converter usando o desugar:
+
+(define (desugar [as : ArithS]) : ArithC
+  (type-case ArithS as
+    [ numS    (s)   (numC n) ]
+    [ plusS   (l r) (plusC (desugar l) (desugar r)) ]
+    [ multS   (l r) (plusC (desugar l) (desugar r)) ]
+    [ bminusS (l r) (plusC (desugar l) 
+                      (multC (numC -1) (desugar r)) ) ]
+    [ uminusS (e)   (desugar (bminusS (numS 0) e))
+))
+
+Essa solução é válida, mas ela tem um problema sutil: em uminusS, 
+temos uma RECURSÃO. Precisamos garantir que a recursão pare sempre.
+Em casos como um cálculo de fatorial (por exemplo), estamos 
+reduzindo o problema sempre. Esse é um tipo de RECURSÃO ESTRUTURAL
+(pegando, sempre, um problema menor). Entretanto, no caso acima,
+quando usamos o bminusS, estamos aumentando nosso problema um 
+pouco, dado que a chamada de 'desugar' foi sobre o bminusS, e não
+sobre o e. Esse é um tipo de RECURSÃO GENERATIVA (chamada 
+recursiva feita sobre algo um pouco maior), e tem o potencial de
+não parar (não necessariamente, mas o potencial existe).
+
+Para evitarmos isso, temos uma solução: trocar o uminusS
+
+(define (desugar [as : ArithS]) : ArithC
+  (type-case ArithS as
+    [ numS    (s)   (numC n) ]
+    [ plusS   (l r) (plusC (desugar l) (desugar r)) ]
+    [ multS   (l r) (plusC (desugar l) (desugar r)) ]
+    [ bminusS (l r) (plusC (desugar l) 
+                      (multC (numC -1) (desugar r)) ) ]
+    [ uminusS (e)   (multC (numC -1) (desugar e))
+))
+
+Temos, portanto, um desugar sobre 'e', reduzindo o problema. A 
+recursão é ESTRUTURAL, e não GENERATIVA. O grande truque é 
+fazer o produto por -1. Estamos sempre gerando sobre as primitivas,
+criando açúcar sintático só sobre as primitivas, sem gerar açúcar
+sobre açúcar.
+
+O interpretador continua o mesmo, pois ainda temos o ArithC.
+
+O parser, porém, agora precisará reconhecer o bminusS.
+Como o '-' seria identificado como número, usaremos o ~ para ser
+interpretado como '-'.
+
+(define (parse [s : s-expression]) : ArithS
+  (cond
+    [(s-exp-number? s) (numS (s-exp->number s))]
+    [(s-exp-list? s)
+      (let ([sl (s-exp->list s)])
+        (case (s-exp->symbol (first sl))
+          [(+) (plusS (parse (second sl)) (parse (third sl)))]
+          [(*) (multS (parse (second sl)) (parse (third sl)))]
+          [(-) (bminusS (parse (second sl)) (parse (third sl)))]
+          ; o '~' será o sinal negativo
+          [(~) (uminusS (parse (second sl)))]
+        [else (error 'parse "invali list input")]
+    ))]
+  [else (error 'parse "invalid input"')]
+))
+
+O fato de termos de usar o ~ como sinal de - é porque o parser depende
+do parser do Racket. Se o scanner fosse feito por nós, poderíamos usar
+um LOOKAHEAD para que pudéssemos testar qual o tipo de -.
+
+==================================
+
+    
+    * ArithC
+    
+                 ArithC
+     .-----------' | | '---------------------.
+     |      .------' '------.       .........|.........
+    numC  plusC           multC     :       ifC       :
+          /   \           /   \     :      / | \      :
+     ArithC   ArithC  ArithC ArithC : ArithC | ArithC :
+                                    :     ArithC      :
+                                    '''''''''''''''''''
+                                Precisaríamos mudar o ArithC
+                                para criar um ifC. Ele teria
+                                3 argumentos: condição, ação
+                                se verdadeira, ação se falsa.
+
+    * desugar (ArithS -> ArithC)
+
+        ...
+        [ ifS (c y n) (ifC (desugar c) (desugar s) (desugar n)) ]
+    
+    Estamos devolvendo um arithC usando um desugar.
+    
+    * Interpretador (ArithC -> number)
+    ...
+       [ ifC (c s n) (if (zero? (interp c)) (interp n) (interp s)) ] 
+    
+   
+    Não é possível criar um operador de divisão a partir dos operadores
+    primitivos já implementados - precisaríamos mexer no ArithC, ou
+    usar um primitivo 'inverso' (mas não seria necessário)
+
+(define-type ArithC                  
+  [ numC  (n : number) ]             
+  [ plusC (l : ArithC) (r : ArithC)              ]
+  [ multC (l : ArithC) (r : ArithC)              ]
+  [ ifC   (c : ArithC) (y : ArithC) (s : ArithC) ]
+)                                    
+
+(define-type ArithS                    
+  [ numS  (n : number)                           ]
+  [ plusS (l : ArithS) (r : ArithS)              ]
+  [ multS (l : ArithS) (r : ArithS)              ]
+  [ ifS   (c : ArithS) (y : ArithS) (s : ArithS) ]
+)
+
+(define (desugar [as : ArithS]) : ArithC
+  (type-case ArithS as
+    [ numS    (s)     (numC n) ]
+    [ plusS   (l r)   (plusC (desugar l) (desugar r)) ]
+    [ multS   (l r)   (plusC (desugar l) (desugar r)) ]
+    [ bminusS (l r)   (plusC (desugar l) 
+                        (multC (numC -1) (desugar r)) ) ]
+    [ ifS     (c y n) (ifC (desugar c) (desugar y) (desugar n)) ]
+))
+
+(define (interp [a : ArithC]) : number
+  (type-case ArithC a
+    [numC  (n)     n]
+    [plusC (l r)   (+ (interp l) (interp r))]
+    [ifC   (c y n) (if (zero? (interp c)) (interp y) (interp n))]
+))
+
+(define (parse [s : s-expression]) : ArithS
+  (cond
+    [(s-exp-number? s) (numS (s-exp->number s))]
+    [(s-exp-list? s)
+      (let ([sl (s-exp->list s)])
+        (case (s-exp->symbol (first sl))
+          [(+)  (plusS (parse (second sl)) (parse (third sl)))]
+          [(*)  (multS (parse (second sl)) (parse (third sl)))]
+          [(-)  (bminusS (parse (second sl)) (parse (third sl)))]
+          [(if) (ifS (parse (first sl)) 
+                    (parse (second sl)) (parse (third sl)))
+        [else (error 'parse "invali list input")]
+    ))]
+  [else (error 'parse "invalid input"')]
+))
+
+==================================
+
+
+    * ExprC
+    
+                          ExprC
+         .-------------' | | | | |
+         |   .-----------' | | | '-------------------.
+         |   |    .--------' | '------.              |
+        idC numC  |   .------'     multC           ifC
+             .----' plusC          /   \          / | \
+             |      /   \      ArithC ArithC ArithC | ArithC
+             | ArithC   ArithC                     ArithC
+             |
+           appC 
+           /  \
+        symb  ArithC              
+    
+    Para criar funções, primeiro criamos um novo tipo (exigência
+    do plai-typed), que será FunDefC. Este novo tipo terá como
+    construtor a palavra fdC e 3 outros argumentos:
+        - um símbolo, o nome da função;
+        - um argumento, que também será um símbolo a ser
+          substituído na execução;
+        - uma ExprC, que é o que será feito.
+    
+    (define-type FunDefC
+        [fdC (name: symbol) (arg: symbol) (body: ExprC))
+    
+    ; Um exemplo de definição de função será:
+    (fdC 'double 'x (plusC (idC 'x) (idC 'x)))
+    
+    ; Para chamar a função, usaremos o appC:
+    (appC 'double (numC 5))
+    
+INTERPRETADOR
+===============
+
+interp ExprC (listof FunDefC) →  num
+O interpretador terá 2 argumentos:
+    * Uma ExprC com uma árvore;
+    * Uma lista de definições de funções, a serem utilizadas
+      dentro da árvore.
+
+Dentro do interpretador, dado um 'appC', o que ele precisará 
+fazer será buscar na lista de funções (um ambiente, ou tabela
+de símbolos) pela função. Então usaremos
+
+subst value arg expr
+    * Substitui o VALOR no ARGUMENTO dentro da EXPRESSÃO
+    * A expressão será o CORPO de uma função. Então, substituiremos
+      o símbolo por este valor
+
+Uma vez feito isso, o appC será substituído pelo bloco com
+as substituições já feitas. 
+
+(define-type ExprC                  
+  [ numC  (n : number)                        ]
+  [ idC   (s : symbol)                        ]
+  [ plusC (l : ExprC) (r : ExprC)             ]
+  [ multC (l : ExprC) (r : ExprC)             ]
+  [ ifC   (c : ExprC) (y : ExprC) (s : ExprC) ]
+  [ appC  (f : idC)   (a : ExprC)             ]
+)                                    
+
+(define-type ArithS                    
+  [ numS  (n : number)                           ]
+  [ plusS (l : ArithS) (r : ArithS)              ]
+  [ multS (l : ArithS) (r : ArithS)              ]
+  [ ifS   (c : ArithS) (y : ArithS) (s : ArithS) ]
+  [ appS  (f : idS)    (a : ExprS)               ]
+)
+
+(define (desugar [as : ArithS]) : ArithC
+  (type-case ArithS as
+    [ numS    (s)     (numC n)                                  ]
+    [ plusS   (l r)   (plusC (desugar l) (desugar r))           ]
+    [ multS   (l r)   (plusC (desugar l) (desugar r))           ]
+    [ bminusS (l r)   (plusC (desugar l) 
+                        (multC (numC -1) (desugar r)) )         ]
+    [ ifS     (c y n) (ifC (desugar c) (desugar y) (desugar n)) ]
+    ; Precisamos fazer susugar no argumento, porque ele é 
+    ; também uma ExprS (e precisa ser transformado em ExprC)
+    [ appS    (f a)   (appC f (desugar a))                      ]
+))
+
+(define (interp [a : ExprC] [fds : (listof FuncDefC) ) : number
+  (type-case ExprC a
+    [numC  (n)     n]
+    [plusC (l r)   (+ (interp l fds) (interp r fds))]
+    [ifC   (c y n) (if (zero? (interp c)) (interp y fds) (interp n fds))]
+    
+    ; Primeiro, acha a definição de fd
+    ; Então, substitui as macros
+    ; Por último, executa a interpretação
+    [appC  (f a)
+      (local ([define fd (get-fundef f fds)]) ; peda a definição de fd
+                                              ; na biblioteca fds
+        (interp (subst a                      ; interpreta o resultado
+          (fdC-arg fd)                        ; de subst
+          (fdC-body fd)
+        )
+      fds))]
+    
+    ; Não devem sobrar identificadores livres na expressão
+    [idC (_) (error 'interp "não deveria encontrar isso!")]
+))
+
+; Substitui os símbolos pelo valor deles
+(define (subst [value : ExprC ] [name: symbol] [in : ExprC]) : ExprC
+  (type-case ExprC in
+    [numC (n) in]
+    [idC (s) (cond
+        [ (symbol=? s name) value]  ; symbol, substitute
+        [ else in ]                 ; otherwise, do nothing
+    )]
+    [appC  (f a)   (appC (subst value name a))]
+    [plusC (l r)   (plusC (sust value name l) (subst value name r))]
+    [ifC   (c s n) (ifC (subst value name c)
+                        (subst value name y) (subst value name n))
+    ]
+))
+
+; Acha a função dentro da biblioteca
+; Faz uma recursão de cauda, que vira um 'for'
+(define (get-fundef [n : symbol] [fds : (listof FunDefC)]) : FunDefC
+    (cond
+        [(empty? fds) (error 'get-fundef "referência não definida")]
+        [(cons? fds) (cond
+            [(equal? n (fdC-name (first fds))) (first fds)] ; se achar
+            [else (get-fundef n (rest fds))]                ; continue
+        )]
+))
+
+(define (parse [s : s-expression]) : ArithS
+  (cond
+    [(s-exp-number? s) (numS (s-exp->number s))]
+    [(s-exp-list? s)
+      (let ([sl (s-exp->list s)])
+        (case (s-exp->symbol (first sl))
+          [(+)  (plusS (parse (second sl)) (parse (third sl)))]
+          [(*)  (multS (parse (second sl)) (parse (third sl)))]
+          [(-)  (bminusS (parse (second sl)) (parse (third sl)))]
+          [(if) (ifS (parse (first sl)) 
+                    (parse (second sl)) (parse (third sl)))
+          [(call) (appS (s-exp->symbol (second sl)) (parse (third sl)) )]
+        [else (error 'parse "invali list input")]
+    ))]
+  [else (error 'parse "invalid input"')]
+))
+
+(define biblioteca (list
+    [ fdC 'dobro 'x (plusC (idC 'x) (idC 'x)) ]
+))
+
+Quanto executamos:
+(interp (call 'dobro (mult C (numC 7) (numC 3))))
+
+Temos um problema: geramos duas cópias do 
+(mult C (numC 7) (numC 3)). Esse conceito é 'eager',
+e é executado na hora. Pelo contrário, temos o 
+lazy (que só calcula se necessário).
+
+==================================
+
+BINDINGS e AMBIENTES
+======================
+
+No último interpretador que vimos, tínhamos um problema: não tínhamos
+uma abordagem eager, mas uma lazy. Como substituímos os argumentos,
+eles eram calculados somente se necessários. Apesar disso, ficávamos
+aumentando a árvore ao introduzir a substituição prévia da expressão
+que definia o argumento - e isso o tornava ineficiente.
+
+Para evitar isso, podemos criar uma TABELA DE SÍMBOLOS para os
+argumentos da função: quando encontrarmos um símbolo que represente
+o nome de uma variável, acessamos a expressão que o define. Essa 
+ação de associação é chamada de BINDING, e a tabela de símbolos é um
+AMBIENTE.
+
+Conforme adentramos numa função, devemos EXPANDIR um ambiente. 
+Colocando um novo ambiente à frente, podemos 'mascarar' a associação
+antiga, e usar a nova.
+
+(define-type Binding                       ; Um 'binding', ou associação,
+    [bind (name : symbol) (val : number)]) ; é associar um certo símbolo
+                                           ; a um valor.
+
+(define-type-alias Env (listof Binding))   ; Diremos que um AMBIENTE 
+                                           ; é uma lista de bindings.
+(define mt-env empty)                      ; Lista vazia, muitos 
+                                           ; ambientess são vazios.
+(define extend-env cons)                   ; Usamos um 'cons' para
+                                           ; extendermos uma lista,
+                                           ; incluindo a nova lista 
+                                           ; no início.
+
+;
+; O interpretador, agora, além da lista de funções deverá
+; levar uma lista de associações.
+;
+(define (interp [a : ExprC] [env : Env] [fds : (listof FuncDefC)]) : number
+  (type-case ExprC a
+    [numC  (n)     n]
+    [plusC (l r)   (+ (interp l env fds) (interp r env fds))]
+    [multC (l r)   (+ (interp l env fds) (interp r env fds))]
+    [ifC   (c y n) (if (zero? (interp c)) 
+                    (interp y env fds) (interp n env fds))]
+    
+    ; Primeiro, acha a definição de fd
+    ; Então, substitui as macros
+    ; Por último, executa a interpretação
+    [appC  (f a)
+      (local ([define fd (get-fundef f fds)])
+        (interp (fdC-body fd)
+          (extend-env
+            (bind (fdC-arg fd) (interp a env fds))
+          env)
+        fds))]
+    
+    ; Não devem sobrar identificadores livres na expressão
+    [idC (_) (error 'interp "não deveria encontrar isso!")]
+))
+
+(define (lookup [for : symbol] [env : Env]) : number
+    (cond
+        [(empty? env) (error 'lookup "argument not fund")]
+
+O caso anterior, porém, tem um problema: conforme ampliamos o 
+ambiente, as variáveis não podem recuperar suas associações anteriores
+quando saem da função. Como resolvermos isso? Podemos restringir o 
+ambiente apenas para a função. E como fazer? Em vez de passar juntarmos
+os ambientes antigos, podemos uní-lo à um ambiente vazio (não temos 
+outra forma de criar um ambiente se não usando o extend-env).
+
+[appC (f a)
+  (local ([define fd (get-fundef f fds)])
+    (interp (fdC-body fd)
+      (extend-env
+        (bind (fdC-arg fd) (interp a env fds))
+      mt-env)
+    fds))]
+
+Esse tipo de associação é chamada de ASSOCIAÇÃO ESTÁTICA, pois o
+ambiente não é herdado conforme entramos em escopos mais profundos.
+A associação, do outro modo, é a ASSOCIAÇÃO DINÂMICA, que é 
+considerada um ERRO de implementação.
+
+==================================
+
+Até agora, nossas funções não faziam parte da nossa linguagem.
+Agora, vamos tentar inserir as funções como valores, dentro
+do contexto da ExprC.
+
+O que mais nos impede, até agora, é que o nosso interpretador
+sempre nos devolve um Número. Isso é bem ruim, pois teríamos um
+ERRO se déssemos uma função. Vamos, então, introduzir no interpretador
+a possibilidade de devolvemos uma FUNÇÃO.
+
+Primeiro, dentro de ExprC, vamos ADICIONAR um dfC (function
+definition), em vez de termos a função criada externamente.
+Isso nos TIRARÁ a limitação de que tenhamos APENAS funções
+definidas anteriormente.
+
+(define-type ExprC
+  [ numC  (n : number)                                 ]
+  [ idC   (s : symbol)                                 ]
+  [ plusC (l : ExprC) (r : ExprC)                      ]
+  [ multC (l : ExprC) (r : ExprC)                      ]
+  [ ifC   (c : ExprC) (y : ExprC) (s : ExprC)          ]
+  [ appC  (f : ExprC) (a : ExprC)                      ]
+  [ fdC   (name : symbol) (arg : symbol) (body: ExprC) ]
+)
+
+Porém, agora, temos duas novas dificuldade. 'fdC' é, na verdade, um
+novo tipo primitivo (além de número). Agora, nossos operadores deverão
+verificar TIPOS. Também, nosso interpretador não devolve funções, e
+precisaremos ter um valor de retorno especificado.
+
+Nosso tipo de retorno será, a partir de agora:
+(define-type Value
+    [numV (n : number)]
+    [funV (name : symbol) (arg : symbol) (body : ExprC)]
+)
+
+Agora, porém, precisaremos definir operadores QUE VERIFIQUEM TIPOS, 
+para colocarmos um interpretador.
+(define (num+ [l : Value] [r : Value]) : Value
+    (cond 
+        [(and (numV? l) (numV? r))
+            (numV (+ (numV-n l) (numV-n r)))\]
+        [else "Error"]
+)) 
+
+(define (num* [l : Value] [r : Value]) : Value
+    (cond 
+        [(and (numV? l) (numV? r))
+            (numV (* (numV-n l) (numV-n r)))\]
+        [else "Error"]
+)) 
+
+O desugar tem que mudar só um pouquinho: agora, precisaremos apenas
+fazer um 'desugar' na ExprC do argumento
+
+(define (desugar [as : ArithS]) : ArithC
+  (type-case ArithS as
+    [ numS    (s)     (numC n)                                  ]
+    [ plusS   (l r)   (plusC (desugar l) (desugar r))           ]
+        [ multS   (l r)   (plusC (desugar l) (desugar r))           ]
+        [ bminusS (l r)   (plusC (desugar l) 
+                            (multC (numC -1) (desugar r)) )         ]
+        [ ifS     (c y n) (ifC (desugar c) (desugar y) (desugar n)) ]
+        [ appS    (f a)   (appC f (desugar a))                      ]
+        [ dfS     (f a b) (fdC  f a (desugar b))]
+    ))
+
+    (define (interp [a : ExprC] [env : Env]) : number
+      (type-case ExprC a
+        [numC  (n)     (numV n)] ; garantir o retorno do tipo esperado
+        [ idC  (n)     (lookup n env)]
+        [plusC (l r)   (num+ (interp l env) (interp r env))]
+    [multC (l r)   (num* (interp l env) (interp r env))]
+    [ifC   (c y n) (if (zero? (interp c)) (interp y fds) (interp n fds))]
+    
+    ; Primeiro, acha a definição de fd
+    ; Então, substitui as macros
+    ; Por último, executa a interpretação
+    [appC  (f a)
+      (local ([define fd (interp f env)])
+        (interp (funV-body fd)
+          (extend-env
+            (bind (funV-arg fd) (interp a env))
+          mt-env)
+    ))]
+    
+    ; Não devem sobrar identificadores livres na expressão
+    [idC (_) (error 'interp "não deveria encontrar isso!")]
+))
+
+(define (lookup [for : symbol] [env : Env]) : Value
+    (cond
+        ; Base da recursão: lista vazia, não achamos o elemento
+        (empt? env) (error 'lokup with problems - error msg')
+        [else (cond
+            ; Procuramos no primeiro elemento. Se for, já o 
+            ; devolvemos.
+            [(symbol=? for (bind-name (first env)))
+                           (bind-val (first env))]
+            
+            ; Caso contrário, devolvemos o "cdr" do plai-typed
+            ; o "rest", aplicando no lookup. É o passo da recursão
+            [else (lookup for (rest env))]
+        
+        )] ; else cond
+))
+        
+(define (parse [s : s-expression]) : ArithS
+  (cond
+    [(s-exp-number? s) (numS (s-exp->number s))]
+    [(s-exp-list? s)
+      (let ([sl (s-exp->list s)])
+        (case (s-exp->symbol (first sl))
+          [(+)  (plusS (parse (second sl)) (parse (third sl)))]
+          [(*)  (multS (parse (second sl)) (parse (third sl)))]
+          [(-)  (bminusS (parse (second sl)) (parse (third sl)))]
+          [(if) (ifS (parse (first sl)) 
+                    (parse (second sl)) (parse (third sl)))
+          [(func) (fdS (s-exp->sumbol (second sl)) 
+                       (s-exp->symbol (third sl))
+                       (parse (fourth sl)) )]
+          [(call) (appS (s-exp->symbol (second sl)) (parse (third sl)) )]
+        [else (error 'parse "invali list input")]
+    ))]
+  [else (error 'parse "invalid input"')]
+))
+
+; Facilitador para a linguagem
+(define (interpS [s : s-expression]) 
+    (interp (desugar (parse s)) mt-env))
+
+Neste ponto do código, o NOME DA FUNÇÃO não foi usada em quase lugar
+nenhum. Isso é muito interessante, pois na realidade nossas funções
+não precisam ter nomes - são ANÕNIMAS. Elas são funções λ. E, na 
+realidade, é possível apenas definir FUNÇÕES DENTRO DE FUNÇÕES.
+
+Exemplos:
+> (interpS '(func f1 x (func f2 x (+ x x))) )
+  - Value
+  (funC 'f1 'x (fdC 'f2 'x (plusC (idC 'x) (idC 'x))))
+
+> (interpS '(call (func f1 x (func f2 x (+ x x))) 4) )
+  - Value
+  (funC 'f1 'x (fdC 'f2 'y (plusC (idC 'x) (idC 'y))))
+
+> (interpS '(call (call (func f1 x (func f2 x (+ x x))) 4) 5))
+  - Value
+  lookup: x não foi encontrado
+
+Esse último erro foi devido a que os ambientes NÃO ESTÃO SENDO HERDADOS.
+Se fizéssemos nosso sistema antigo, teríamos o erro de design do escopo
+global. Mas se levássemos, APENAS, o escopo anterior, poderíamos ter 
+esta flexibilidade.
+
+Este conceito de levar uma parte do ambiente consigo é chamada de 
+FECHAMENTO (closure), e as funções usadas que carregam este ambiente
+são conhecidas como LAMBDAS (λ).
+
+Não teremos mais fdC, mas lamC, para lambdas:
+        
+                        { nome
+                    fdC { arg   }
+                        { corpo } lamC
+                          env   }
+
+(define-type ExprC
+  [ numC  (n : number)                        ]
+  [ idC   (s : symbol)                        ]
+  [ plusC (l : ExprC) (r : ExprC)             ]
+  [ multC (l : ExprC) (r : ExprC)             ]
+  [ ifC   (c : ExprC) (y : ExprC) (s : ExprC) ]
+  [ appC  (f : ExprC) (a : ExprC)             ]
+  [ lamC  (arg : symbol) (body: ExprC)        ]
+)
+
+Porém, agora, temos duas novas dificuldade. 'fdC' é, na verdade, um
+novo tipo primitivo (além de número). Agora, nossos operadores deverão
+verificar TIPOS. Também, nosso interpretador não devolve funções, e
+precisaremos ter um valor de retorno especificado.
+
+Nosso tipo de retorno será, a partir de agora:
+(define-type Value
+    [numV  (n : number)]
+    [closV (arg : symbol) (body : ExprC) (env: Env)]
+)
+
+(define (desugar [as : ArithS]) : ArithC
+  (type-case ArithS as
+    [ numS    (s)     (numC n)                                  ]
+    [ plusS   (l r)   (plusC (desugar l) (desugar r))           ]
+        [ multS   (l r)   (plusC (desugar l) (desugar r))           ]
+        [ bminusS (l r)   (plusC (desugar l) 
+                            (multC (numC -1) (desugar r)) )         ]
+        [ ifS     (c y n) (ifC (desugar c) (desugar y) (desugar n)) ]
+        [ appS    (f a)   (appC f (desugar a))                      ]
+        [ lamS    (a b)   (lamC a (desugar b))]
+    ))
+
+    (define (interp [a : ExprC] [env : Env]) : number
+      (type-case ExprC a
+        [numC  (n)     (numV n)] ; garantir o retorno do tipo esperado
+        [idC   (n)     (lookup n env)]
+        [plusC (l r)   (num+ (interp l env) (interp r env))]
+        [multC (l r)   (num* (interp l env) (interp r env))]
+        [ifC   (c y n) (if (zero? (interp c))
+                            (interp y fds) (interp n fds))]
+        
+        ; Primeiro, acha a definição de fd
+        ; Então, substitui as macros
+        ; Por último, executa a interpretação
+        [appC  (f a)
+          (local ([define f-value (interp f env)])
+            (interp (closV-body f-value)
+              (extend-env
+                (bind (funV-arg f-value) (interp a env))
+              f-value) ; Agora, não passamos mais só mt-env, mas
+                       ; todo o valor da função
+        ))]
+))
+
+(define (lookup [for : symbol] [env : Env]) : Value
+    (cond
+        ; Base da recursão: lista vazia, não achamos o elemento
+        (empt? env) (error 'lokup with problems - error msg')
+        [else (cond
+            ; Procuramos no primeiro elemento. Se for, já o 
+            ; devolvemos.
+            [(symbol=? for (bind-name (first env)))
+                           (bind-val (first env))]
+            
+            ; Caso contrário, devolvemos o "cdr" do plai-typed
+            ; o "rest", aplicando no lookup. É o passo da recursão
+            [else (lookup for (rest env))]
+        
+        )] ; else cond
+))
+        
+(define (parse [s : s-expression]) : ArithS
+  (cond
+    [(s-exp-number? s) (numS (s-exp->number s))]
+    [(s-exp-list? s)
+      (let ([sl (s-exp->list s)])
+        (case (s-exp->symbol (first sl))
+          [(+)  (plusS (parse (second sl)) (parse (third sl)))]
+          [(*)  (multS (parse (second sl)) (parse (third sl)))]
+          [(-)  (bminusS (parse (second sl)) (parse (third sl)))]
+          [(if) (ifS (parse (first sl)) 
+                    (parse (second sl)) (parse (third sl)))
+          [(func) (lamS (s-exp->sumbol (second sl)) 
+                       (s-exp->symbol (third sl))    )]
+          [(call) (appS (s-exp->symbol (second sl)) (parse (third sl)) )]
+        [else (error 'parse "invali list input")]
+    ))]
+  [else (error 'parse "invalid input"')]
+))
+
+; Facilitador para a linguagem
+(define (interpS [s : s-expression]) 
+    (interp (desugar (parse s)) mt-env))
+
+* Ex:
+    (interpS '(call (func f (func x (call f 10))) (+ x y)))
+    
+                            appC
+                            /  \
+                           /    \
+                          /   ...\........
+                      lamC    :   addC   :
+                      /  \    :   /  \   :
+                  id f   lamC :id X  id Y:
+                         /  \ '''''''''''''
+                        /    \            |
+                      id X  appC          |
+                            /  \          |
+                         id f  numC 10    |
+                         ^^^^-------------'
+    
+    Nesse ponto do fim da árvore, f é aquela subárvore. Temos ERRO 
+    porque tanto X quanto Y não tiveram valore de binding associados.
+    Mesmo que fizéssemos um call para definir X no segundo λ, teríamos
+    APENAS uma função lambda que faria (+ valor_x y).
+
+Agora, todas as nossas funções são anônimas. Como poderíamos proceder
+para DAR NOMES às funções?
+
+Isso já é possível! Só usarmos o call:
+    > (interpS '(call (func f (call f 10)) (func x (+ x x))) ) 
+
+Criamos uma lambda que pega como argumento o corpo de uma função E
+a aplica no corpo de uma outra closure. Desse modo, estamos fazendo
+um binding do CORPO da função com o argumento dela.
+
+Fazendo um açúcar sintático sobre isto, poderíamos ter algum método
+de chamar funções. Ou, alterando o parser, poderíamos colocar que 
+qualquer símbolo simples fosse interpretado como uma função (e tentasse
+ser chamado. Assim, tiraríamos o 'call').
+    
+Se rodássemos sem o call, teríamos:
+    
+    > (interpS '(call (func f (call f 10))) ) 
+    (closV 'f (appC (idC 'f) (numC 10)) '()  )
+            ^ ^^^^^^^^^^^^^^^^^^^^^^^^^  ^- Environment vazio
+            | '- expressão que seria executada
+            '- nome da variável que poderia ser usada aí dentro
+
+==================================
+
+ESTADO E MUTAÇÃO
+
+É extremamente desejável que tenhamos uma maneira de crirar alterações
+nas nossas associações: variáveis.
+
+                          associação
+               id --------------------------> valor
+
+                referência
+               id ------> localização ------> valor
+                   .--.                .--.
+                   |  | Tabela que     |  | Tabela que
+                   |  | associa id     |  | associa local
+                   |  | à local        |  | a um valor
+                   '--'                '--' 
+
+Criaremos uma nova estrutura - um 'box' - que será nossas "caixas" que
+podem criar valores. A associação NÃO MUDA MAIS (do id para a caixa), 
+mas o valor dentro da caixa, sim, pode mudar.
+
+O box terá 3 operações: armazenar, alterar e recuperar.
+
+Para modificarmos o valor de um box, precisaremos de SEQUENCIAMENTO - 
+para mudar uma variável, por exemplo, deveremos alterar uma, primeiro,
+e depois alterar outra. Haverá uma sequência bem definida para 
+criarmos mudanças.
+
+; Agora, o interpretador poderá devolver uma caixa
+(define-type Value
+    [numV  (n : number)]
+    [closV (arg : symbol) (body : ExprC) (env: Env)]
+    [boxV  (v: Value)]
+)
+
+; Uma caixa, e as funções para ALTERAR e RECUPERAR o valor
+; nela poderá ser feita usando outros tipos de ExprC
+(define-type ExprC
+  [ numC    (n : number)                                 ]
+  [ idC     (s : symbol)                                 ]
+  [ plusC   (l : ExprC) (r : ExprC)                      ]
+  [ multC   (l : ExprC) (r : ExprC)                      ]
+  [ ifC     (c : ExprC) (y : ExprC) (s : ExprC)          ]
+  [ appC    (f : ExprC) (a : ExprC)                      ]
+  [ fdC     (name : symbol) (arg : symbol) (body: ExprC) ]
+  [ boxC    (v : ExprC)                                  ]
+  [ setboxC (b : ExprC)                                  ]
+  [ unboxC  (b : ExprC)                                  ]
+)
+
+(define (interp [a : ExprC] [env : Env]) : number
+  (type-case ExprC a
+    
+    ; Dado um boxC, devolvemos um valor boxV com, dentro dele,
+    ; o valor interpretado de A
+    [boxC   (a)     (boxV   (interp a env))]
+    
+    ; Retiramos o valor do box devolvido por a (ou teremos erro)
+    [unboxC (a)     (boxV-v (interp a env))]
+    
+    ; Uma sequência será um par de dois valores intepretados.
+    ; Essa definição TEM UM PROBLEMA: as modificações feitas
+    ; no env de b1 não serão passadas para env de b2. Como 
+    ; tratar isso?
+    [seqC   (b1 b2) (begin (interp b1 env) (interp b2 env))]
+    
+    ; Primeiro, acha a definição de fd
+    ; Então, substitui as macros
+    ; Por último, executa a interpretação
+    [appC  (f a)
+      (local ([define f-value (interp f env)])
+        (interp (closV-body f-value)
+          (extend-env
+            (bind (funV-arg f-value) (interp a env))
+          f-value) ; Agora, não passamos mais só mt-env, mas
+                   ; todo o valor da função
+    ))]
+    
+    [numC  (n)     (numV n)] ; garantir o retorno do tipo esperado
+    [idC   (n)     (lookup n env)]
+    [plusC (l r)   (num+ (interp l env) (interp r env))]
+    [multC (l r)   (num* (interp l env) (interp r env))]
+    [ifC   (c y n) (if (zero? (interp c))
+                        (interp y fds) (interp n fds))]
+))
+
+Para que não precisemos modificar os environments, ou que os 
+environments precisem ser usados para trocar valores (o que nos 
+jogaria, novamente, no problema de escopo dinâmico), precisaremos
+de uma NOVA TABELA DE SÍMBOLOS, agora para levar dos boxes para
+o valor que há no box. Esse será o STORAGE:
+
+            Env                     Storage
+            bind                    cell
+            símbolo->local          local->valor
+            mt-env                  mv-store
+            extend-env              override-store
+            lookup                  fetch
+
+Esta tabelade símbolo (STORAGE) será como uma memória (que é um caso
+concreto do conceito abstrato do storage). Nós não passaremos o env
+de um interpretador (para evitar o escopo dinâmico), mas poderemos
+passar a memória. Em nossa implementação em Racket, o 'override-store'
+será um ampliador da lista (como o extend-env). Mas no caso real,
+o storage seria global e compartilhado por todos.
+
+Passar o STORAGE pode ser pensado, abstratamente, como o interpretador
+passando um novo 'estado da memória'. Aqui, ele terá importância por
+modificarmos as listas. Mas no caso real, a memória seria mudada 
+realmente.
+
+Criaremos RESULT como sendo o "contradomínio" da função 'interp',
+que será o produto cartesiano dos valores pelo storage:
+
+(define-type Result
+    [ v*s   (v : Value) (s : Store)])
+
+(define (interp [e : ExprC] [env : Env] [sto : Store]) : Result
+    [plusC (l r)   (num+ (interp l env sto) (interp r env sto))]
+;                                       ^------------------^
+; Agoram teríamos o mesmo problema do env para o seqC: estamos
+; modificando o 'sto' em 'l' e 'r', mas não passamos de um para
+; o outro. Como poderíamos fazer? As várias interpretaões possíveis
+; são decisões semânticas, e dependem da sua própria decisão.
+    
+    ; Não precisaremos passar e/ou repassar o env. Como só
+    ; podemos criar bindings dentro de appC's, e appC's só
+    ; agem em campos de função, então ao sairmos de b1 ou 
+    ; b2, uma modificação de env deveria morrer lá.
+    [seqC (b1 b2) 
+        (type-case Result (interp b1 env sto)
+            ; Única possibilidade - só um truque esperto
+            ; para utilizarmos aqui...
+            
+            [v*s (v-b1 s-b1) ; só nomes - não têm nada 
+                             ; a ver com campos de variáveis
+                [(interp b2 env s-b1)])]
+)
+
+==================================
+
+Estado → Mutação
+
+Antes, nossos identificadores tinham, SEMPRE, um valor fixo. Agora,
+estamos tentando realizar uma maneira de fazer com que estes valores
+mudem.
+
+Uma das formas que tentamos - alterar a associação pelo Environment - 
+é bem ruim. O Environment Dinâmico causa problemas porque as mudanças
+em níveis de função acabam indo para níveis superiores (nos quais não
+deveriam existir).
+
+Agora, propusemos criar uma nova forma, um REPOSITÓRIO de valor (box).
+A associação passa, agora, por um intermediário. O idC (nome) passa a 
+servir como uma REFERÊNCIA para uma "posição de memória" (box). A 
+associação do box até o valor é mutável (como podemos colocar valores
+diferentes num mesmo pedaço de memória).
+
+    Associações estáticas
+    
+                Environment
+    .------------------------------------.
+    |             binding                |
+    | idC -----------------------> Valor |
+    '------------------------------------'
+    
+    Ambiente com memória
+    
+        Environment         Storage
+    .----------------..------------------.
+    |       bind     ||    store         |
+    | idC --------> boxC --------> Valor |
+    '----------------''------------------'
+     symbol       location         value    ← Tabelas de símbolo
+
+Para o box, teremos UMA ESTRUTURA e DUAS OPERAÇÕES:
+    
+(define-type ExprC
+  [ boxC    (arg : ExprC)             ]
+  [ setBox  (b : ExprC)               ]
+  [ unbox   (b : ExprC)               ]
+  [ seqC    (b1 : ExprC) (b2 : ExprC) ]
+)
+
+A noção de caixa também deverá ser usada dentro dos 
+possíveis valores de retorno. Ela será, realmente, 
+apenas uma caixa para guardar outra expressão. E seu
+uso, dentro do contexto do interpretador, será apenas
+o de retirar o valor de dentro da caixa e aplicar nele
+o interpretador.
+
+(define-type Values
+  [ numV   (n : number)                   ]
+  [ closV  (a : arg) (b : body) (e : env) ]
+  [ boxV   (v : Value)                    ]
+)
+
+Como temos o STORAGE, agora, precisaremos passá-lo 
+de um lado a outro. Quando criamos o environment 
+dinâmico, ficávamos passando-o de um lado a outra,
+o que nos gerava as consequências indesejáveis de
+anteriormente. Mas, agora, o STORAGE será passado.
+Na realidade, quando o STORAGE é uma memória, ele
+não seria "passado", mas seria de acesso global.
+Retornar o STORAGE será passar, de um lado para
+outro, "momentos" do STORAGE.
+
+Como ficaria o interpretador? Como só temos um 
+valor de retorno, e precisamos passar Valor + 
+Storage, então criamos o Result:
+
+(define-type Result
+    [ v*s (v : Value) (s : Storage) ]
+)
+
+(define (interp [expr : ExprC] [env : Env] [sto : Storage]) : Result
+    ...
+    ; Para o sequenciamento, precisamos usar um truque: como podemos
+    ; modificar o storage em uma delas, devemos passar a possível 
+    ; mudança de estado para a próxima operação. Esta opção é uma 
+    ; forma de "serialização". Não é a única alternativa. As expressões
+    ; poderiam não ter consciência da mudança de storage, o que as 
+    ; tornaria paralelizáveis. Porém, o primeiro caso é mais simples.
+    
+    [ seqC (b1 b2)
+        ( type-case Result (interp b1 env sto)
+            [ v*s (v-b1 s-b1) (interp b2 s-b1)])
+    ]
+    ; A solução acima pode ser usada para a soma e o produto.
+    ; O type-case no Result é só um truque esperto para que 
+    ; peqguemos o storage do primeiro argumento.
+)
+
+Precisaremos, agora, de uma forma de criar novos boxes. Mas, para 
+isso, devemos ARMAZENAR no Storage, usando como "chave" da "tabela
+de símbolos" uma posição livre. Como obter esta posição livre? Uma
+forma simples é usar um CONTADOR. Mas, aí, temos um problema de 
+autorreferência: precisamos de um box para armazenar qual a quantidade
+de boxes. Por sorte, temos o Racket por trás, e podemos usar um 
+contador DELE como auxiliar.
+
+(define new-loc       < Define um nome para a função anônima
+    (let ([n (box 0)] < Cria variáveis para nossa closure
+        (λ ()                                 < A closure, usando a
+            (begin                            < variável 'n' definida
+                (set-box! n (+ 1 (unbox n)))  < no let, serve como 
+                (unbox n))                    < "contador" para novos
+    )))                                       < endereços na linguagem
+)
+
+Operações da caixa no interpretador
+
+(define (interp [expr : ExprC] [env : Env] [sto : Storage]) : Result
+    [boxC (a)
+        (type-case Result (interp a exv sto)
+            [v*s (v-a s-a)
+                (let ([where 
+
+    [appC (f a)
+      (type-case Result (interp f env sto) ; acha função
+        [v*s (v-f s-f)
+          (type-case Result (interp a env s-f) ; argumento com o 
+                                                 sto modificado
+            [v*x (v-a s-a)
+              (let ([where (new-loc)]) ; aloca função
+                (interp closV-body c-f) ; corpo
+                  (extend-env (bind (closV-arg v-f) where)
+                  ...
+)
+
+========================================================================
+"Questões filosóficas"
+* A ordem com que são realizadas as operações muda a semântica. Também,
+  ter INDEPENDÊNCIA ajuda a paralelizar (independência é a grande
+  chave).
+* O Store é, em princípio, dinâmico, mas o Environment não. O ESCOPO é
+  definido pelo Environment, o ESTADO, pelo Storage. Essa diferença é
+  chave.
+* Na nossa implementação em Racket, o override-storage coloca uma 
+  nova lista na frente - o que é extremamente ineficiente. Se fizermos
+  uma busca + sobrescrição, teremos uma economia. Outra questão é
+  que, ao sairmos de um escopo, acabamos deixando várias associações.
+  Essa memória, teoricamente, ainda está alocada. De tempos em tempos,
+  devemos "limpar" o Storage procurando por alocações sem associação.
+  Essa é a COLETA DE LIXO (GARBAGE COLLECTION).
+* Às vezes, porém, não queremos APAGAR os valores antigos. Isto pode
+  ser útil para que possamos manter um LOG das modificações, e desfazer
+  operações. Este conceito é chamado de STM (Software Transition Memory).
+
+==================================
+
+VARIÁVEIS
+==========
+Para criarmos variáveis, TIRAMOS as opções de box/setbox/unbox de
+dentro do parser. Nosso id's viram var's. 
+
+LET
+====
+Como poderíamos criar um 'let' na nossa linguagem?
+O objetivo do let é:
+    1) Criar um novo símbolo;
+    2) Salvar o valor neste símbolo;
+    3) Executar alguma ação com este símbolo associado
+       a este valor.
+
+Em Racket, temos a analogia:
+((λ(x) corpo) val) ↔ (let [x val] corpo)
+
+Na nossa linguagem, podemos ter o açúcar:
+    [letS (s : symbol) (v : value) (b : body)]
+
+No Desugar, transformaríamos para o λ:
+    [letS (id val expr) (appC (lamC if (desugar expr)) (desugar val))]
+
+O interpretador é o mesmo (pois o let é açúcar), mas precisamos 
+colocar algo no parser:
+    [(def) (letS (s-exp->symbol (second sl)) 
+            (parse (third sl)) (parse (fourth sl)) 
+    )]
+
+Usando isso, podemos ter, por exemplo:
+> (parse '(def b b b))
+    (letS 'b (varS 'b) (varS 'b))
+
+> (desugar (parse '(def b b b)))
+    (appC (lamC 'b (varC 'b)) (varC 'b))
+
+> (interp (desugar (parse '(def b b b))))
+    ERROR: lookup: b não foi encontrado
+
+RECURSÃO
+=========
+
+- Dados → referenciar { outro elemento do mesmo tipo
+                      { a si mesmo
+- Controle → função recursiva
+
+        .-----.       |   
+        |     |       |   .---.   .---.   .---.   .---.
+        |--.--|       |   | *-:-->| *-:-->| *-:-->| *-:--.
+        |  |  |       |   '---'   '---'   '---'   '---'  |
+        '--'--'       |     ^----------------------------'
+         /   \        |   
+        /     \       |                 
+   .-----.   .-----.  |               .---.
+   |     |   |     |  |               | *-:-.
+   |--.--|   |--.--|  |               '---' |
+   |  |  |   |  |  |  |                 ^---'
+   '--'--'   '--'--'  |   
+
+Para criarmos AUTORREFERÊNCIAS, precisaremos de dois passos:
+1) Criar uma associação (variável/box) não definida;
+2) Depois, tricar o valor para a localização da própria variável.
+
+As duas 'dependências' necessárias são:
+1) Criar MUTAÇÕES na variável;
+2) Usar SEQUENCIAMENTO de ações.
+
+Esse procedimento nos permitiria CORRIGIR o exemplo do let da 
+seção anterior. Se pudermos PEGAR o próprio 'endereço' da 
+variável b (guardando em b a chave da tabela de símbolos store).
+
+Um outro problema de autorreferência seria:
+> (interpS 
+    '(def fat 1729 (func n (if n (* n (call fat (-n 1))) 1)))
+)
+    ERROR: lookup: fat não foi encontrado
+
+Poderíamos tentar resolver usando um SEQUENCIAMENTO. Com ele,
+podemos alterar o STORE de modo que, 
+> (interpS '(def fat 1729 ; define fat com um valor dummy
+    (seq 
+        ; Troca 'fat' pelo valor que ela deveria ter: o
+        ; corpo da função fatorial. Não temos o problema,
+        ; pois fat já foi definido no início.
+        (:= fat (func n (if n (* n (call fat (-n 1))) 1)))
+        
+        ; Agora, com o corpo definido, e sabendo que nós
+        ; já tínhamos o símbolo definido, a recursão funciona.
+        (call (fat 10))
+)))
+
+O resultado desta mudança é que acabaremos definindo 'n' várias
+vezes, pois cada vez que entramos numa nova chamada, definimos
+um novo número 'n'. Se tivéssemos otimização, dado que esta é
+uma recursão de cauda, não precisaríamos criar estes environments
+várias vezes: apenas reutilizaríamos o já existente - e ele se
+tornaria um laço.
+
+Essa solução que encontramos usa, de certa maneira, uma recursão
+implícita. Usamos a alteração de ESTADO para criar a recursão. 
+Haveria alguma maneira de criarmos a recursão SEM STORE.
+
+; Um Fibonacci tradicional seria este. 
+; O que devemos colocar no passo para criar a recursão?
+(λ (n)
+    (if (zero? n)
+            1
+            (* n (? (- n 1)))
+))
+
+; Precisamos usar um "duplicador", chamado de GERADOR Y.
+; Ele consiste de uma fábrica de funções, que pode ser
+; recriada pelo corpo da função recursiva.
+(
+                .- Este primeiro λ serve APENAS para dar o "chute
+    ............'  inicial" e começar o processo recursivo.
+    (λ (m) (m m))   <-----. Parâmetro desta closure
+        (λ (f)         ---' <-----. O que é gerado por esta closure:
+            >> (λ (n)          ---' nosso fibonacci
+            >>     (if (zero? n)
+            >>         1
+            >>         (* n ((f f) (- n 1)))
+            >> ))
+        )
+)
+
+; Para não precisarmos mais colocar o '(f f)' no meio da função,
+; e abstrairmos o código do fatorial de dentro do gerador Y, 
+; podemos chamar o (f f) de 'g'.
+; 
+(
+    (λ (m) (m m))   <-----. Parâmetro desta closure
+        (λ (f)         ---' 
+            >> (λ (g)      
+            >>     (λ (n)        
+            >>         (if (zero? n)
+            >>             1
+            >>             (* n (g (- n 1)))
+            >> )))
+            (f f)
+    )
+)
+
+; Agora, podemos simplesmente chamar nossa função recursiva de 
+; de "p". Então, para usar o fatorial, bastará colocá-lo como
+; ARGUMENTO da nossa primeira função:
+(
+    (λ (p)
+        (
+            (λ (m) (m m))
+            (λ (f) (p (f f) ))
+        )
+    )
+    (λ (g) (λ (n) (if (zero? n) 1 (* n (g (- n 1)))
+)
+
+; A última versão, porém, entra em LOOP INFINITO, pois nossa 
+; função '(f f)' é calculada na hora em que a lista é interpretada.
+; Assim, já na nossa primeira execução, entraríamos em loop.
+; Para POSTERGAR a execução de (f f), criamos um dummy λ, que chama
+; a função (f f) com parâmetro 'a'. Mas isso não faz nada.
+(
+    (λ (p)
+        (
+            (λ (m) (m m))
+            (λ (f) (p (λ (a) ((f f) a))))
+        )
+    )
+    (λ (g) (λ (n) (if (zero? n) 1 (* n (g (- n 1)))
+)
+
+==================================
+
+Para criar um combinador na nossa linguagem, usarímos:
+
+(call
+    (call 
+        (func p
+            (call
+                (func m (call m m))
+                (func f (call p (func a (call (call f f) a)) ) )
+            )
+        )
+        ; Fibonacci:
+        (func g (func n (ifS n 1 (mulS n (call g (bminusS n 1))))))
+    )
+    ; Número para chamar o Fibonacci:
+    42
+)
+
+==================================
+
+ORIENTAÇÃO A OBJETOS
+======================
+
+Semânticamente, um objeto é o encapsulamento de uma ideia, para
+abstrairmos estes conceitos.
+
+Concretamente, podemos pensar em um objeto como uma coleção de 
+VALORES (dados) com métodos associadas a eles (funções).
+
+Em nossa linguagem, uma função é um tipo de primeira classe.
+Logo, se pudermos criar uma LISTA com valores, já podemos ter
+uma classe/objeto.
+
+Porém, precisamos ACESSAR estes valores: precisamos ter um SELETOR
+que associa um nome aos seus valores (uma TABELA DE SÍMBOLOS).
+
+Como estamos no contexto de uma linguagem funcional, usaremos como
+nossa TABELA DE SÍMBOLOS listas. Teremos mais duas estruturas:
+
+* No core, o objC:
+    { lista de nomes, lista de ExprC }
+    [ objC (ns : (listof symbol)) (es : (listof exprC)) ]
+     
+* Para termos um objeto concreto, usamos um objV:
+    { lista de nomes, lista de Valores }
+    [ objV (ns : (listof symbol)) (vs : (listof Value)) ]
+
+Dado um objV, precisaremos ter uma maneira de conseguir o valor
+específico de UM ARGUMENTO dentro da closure. Para tanto, usaremos
+o 'msgC' no Core (vindo da ideia do Smaltalk que "enviamos uma 
+mensagem" ao objeto para requisitar um de seus argumentos). Ela
+ficaria:
+    
+    [ msgC (o : ExprC) (n : symbol) ]
+
+Mas, no açúcar, poderíamos adicionar um pouquinho mais: a aplicação,
+para quando tivermos um argumento que for uma closure (como o->n(a) 
+ou o.n(a)):
+    
+    [ msgC (o : ExprS) (n : symbol) (a : ExprS) ]
+
+Para o desugar, algumas modificações da implementação:
+    
+    ; Usaremos um map para percorrer a LISTA de campos para,
+    ; então, desaçucaramos cada elemento.
+    [ objS   (ns es) (objC ns (map (λ e) (desugar e)) es) ]
+    
+    ; Faça desugar do objeto, selecione o campo 'n' com msgC
+    ; e então aplique o desugar de a em appC 
+    [ msgS   (o n a) (appC (msgC (desugar o) n) (desugar a)]
+
+Interpretador, sem STORE (porque não o estaos usando):
+    
+(define (interp [a : ExprC] [env : Env]) : Value
+  (type-case ExprC a
+    ...
+    [objC (ns es) (objV ns (map (λ (e) (interp e env)) es)) ]
+    [msgC (o n)   (lookup-msg n (onterp o env))] ; seletor
+  )
+)
+
+(define (lookup-msg [n : symbol] [o : obj]) : Value
+    (type-case Value o
+        [objV (nomes valores)
+            (cond 
+                (empt? nomes) (error 'Argument does not exist')
+                [else (cond
+                    ; Procuramos no primeiro elemento. Se for, já o 
+                    ; devolvemos.
+                    [(symbol=? n (first nomes))
+                         (bind-val (first valores))]
+                    
+                    ; Caso contrário, devolvemos o "cdr" do plai-typed
+                    ; o "rest", aplicando no lookup. É o passo da recursão
+                    [else (lookup-msg
+                        n (objV (rest nomes) (rest valores))
+                    )]
+                
+                )] ; else cond
+            )
+        [else (error 'lookup error')]
+))
+
+==================================
+
