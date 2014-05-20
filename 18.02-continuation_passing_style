@@ -1,0 +1,55 @@
+CONTINUATION PASSING STYLE
+============================
+
+Este método de computação é o utilizado dentro do esquema
+cliente-servidor (mesmo com suas várias formas de manter o estado). O
+conceito chave é quebrar uma certa computação em uma série de passos
+menores, em que vamos mantendo o "resto" da computação depois da
+operação.
+
+Ex:
+    ; Toda expressão CONSTANTE deve ser quebrada na forma:
+    ; * Constantes cte:
+    ; (λ (resto) (resto cte) )
+    
+    - Original:
+    (+ 2 2)
+    
+    - CPS:
+    (
+        (λ (resto) (resto 2))
+        (λ (x) (+ x 2))
+    )
+
+Ex:
+    ; Todo LAMBDA deve ser quebrada na forma:
+    ; * Lambdas (λ (arg) (ação arg)):
+    ; (λ (arg resto) (resto (ação arg)) )
+    
+    - Original:
+    ((λ (a) (+ (* a 2) b)) 2)
+    
+    - CPS:
+    (
+        ; Criamos um lambda com a computação mais interna, (* a 2)
+        ; que é depois aplicada no "resto" da ação.
+        (λ (a, resto) (resto (* a 2)))
+        
+        ; O argumento para este lambda são dois valores: o x e o resto.
+        (2 (λ (x) (+ x 5)))
+    )
+
+Para cada tipo de estrutura, quebraríamos de forma diferentes. Essa é
+uma forma de TRANSFORMAÇÃO, em que estamos modificando o programa SEM
+alterar o resultado. A implementação poderia ser feita de duas formas:
+* Açúcar : Usando macros para transformar as sentenças originais;
+* Core   : Modificar o core para implementar esta forma.
+
+Se pegássemos umaexpressão,teríamos a transformação na forma:
+e:    3 * (5 + 2) - 7 * 4
+f(x): 3 * x - 7 * 4         e = f(5+2)
+g(y): y - 7 * 4             e = g(f(5+2))
+...                         ...
+
+Estamos passando o resultado de uma ação para a próxima. Essa é a ideia
+de PILHA DE EXECUÇÃO, como feita em Assembly. Está é a CSP.

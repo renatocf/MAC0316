@@ -1,0 +1,42 @@
+ARQUITETURA CLIENTE-SERVIDOR
+==============================
+
+Em geral, as formas que colocamos na arquitetura da última aula mantém o
+ESTADO salvo dentro do hash dos labels. Porém, essa é uma forma, muitas
+vezes, pouco eficiente: um usuário pode demorar para responder, ou pode
+recarregar uma página web, resolicitar, etc.
+
+Duas soluções, que mantém o estado fora do servidor, são possíveis:
+* Manter o estado na aplicação
+    Usando variáveis escondidas, que não aparecem numa página web, é
+    possível enviar dados e/ou ações pela rede. Este protocolo é SEM 
+    ESTADO: o protocolo não muda de acordo com o que está sendo
+    transferido. Ele apenas transfere informação de um ponto a outro.
+    O estado está nas aplicações (ações feitas), não no protocolo. 
+    Nesse caso, não temos uma tabela que armazena dados/ações. O que
+    precisa ser feito é enviado dentro do protocolo.
+
+* Manter o estado no cliente
+    Usamos o conceito de "cookies". Arquivos disponíveis no navegador 
+    do usuário e que um dado site pode editar. Ele o usa para guardar 
+    as informações dentro do cliente, no momento em que submete um
+    formulário para o servidor. O servidor pode, então, usar estes dados
+    SALVOS no cliente para continuar as ações.
+    
+    ; cookies
+    (define cookie '-100)
+    
+    (define (read-number/suspend "\nFirst number (cookie)"
+      (lambda (v1)
+        (begin
+          (set! cookie v1)
+          (read-number/suspend "\nSecond number (cookie)"
+                               (lambda (v2) (display (+ cookie v2)))
+      )))
+    ))
+
+    Este é um exemplo de transimissão de informações chamado
+    continuation passing style (CPS). Ele consiste, primariamente, de
+    quebrar uma ação numa sequência de passos. Dado um passo i, ele 
+    executa a computação correspondente a ele e depois envia o restante
+    da operação i+1 para ser executada depois.
