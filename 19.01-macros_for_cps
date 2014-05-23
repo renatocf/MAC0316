@@ -1,0 +1,110 @@
+MACROS PARA CPS
+=================
+
+Vamos criar um processador de macros para o estilo de processamento de
+continuação. Com ele, transformaremos um tipo de expressão em outra.
+
+Fazeremos uma conversão de sintaxe. Escreveremos com nosso estilo, e a
+traduziremos com os comandos tradicionais do Racket para o estilo de 
+continuação.
+    
+              |  Sintaxe CPS  |    Racket    |
+              |===============|==============|
+              | with          | let          |
+              | rec           | letrec       |
+              | lam           | lambda       |
+              | cnd           | if           |
+              | set           | set!         |
+              | seq           | begin        |
+
+(define-syntax (cps e)
+  (syntax-case e (with rec lam cnd seq set quote display read-number)
+    
+    [(_ atomic)
+        #'(lambda (k) (k atomic))]
+    
+    ; Rec é como o let recursivo (letrec), que muda o storage
+    ; conforme novas associações são feitas
+    [(_ (rec (v f) b))
+        #'(cps (with (v (lam (arg) (error 'dummy "nothind")))
+                  (seq
+                    (set v f)
+                    b)))
+    ]
+    
+    ; lambda
+    [(_ (lam (a) b))
+      (identifier? #'a)
+      
+      ; Toda sintaxe convertida deve ser um lambda que recebe como
+      ; parâmetro uma continuação. Essa continuação, definida no 
+      ; tempo de definição da função, chama-se k. O corpo da função,
+      ; seja qual for, deve ser argumento para esta continuação.
+      #'(lambda (k)
+          
+          ; Todo argumento devolvido por uma função também deve 
+          ; estar no CPS. Precisamos converter o λ de verdade para
+          ; esse estilo. Para fazer isso:
+          ; 1) Expandimos a lista de argumento para receber como 
+          ;    argumento final uma continuação: dyn-k
+          ; 2) O corpo também precisa ser passado para o estilo de
+          ;    continuação. Isso pode ser feito aplicando a 
+          ;    continuação dyn-k para ele.
+          ;
+          (k (lambda (a dyn-k) ((cps b) dyn-k) ))
+    ]
+    
+    ; Ex:
+    ; (λ (a) b)
+    ; (λ (k) 
+    ;    (k (λ (a dyn-k) (eps b dyn-k)))
+    ; )
+    ; 
+    ; Ex:
+    ; (cps (+ (rn "um") (rn "dois")) )
+    ; ( 
+    ;     (λ (k) 
+    ;        (+ k (rn "dois"))
+    ;     )
+    ;     (rn "um") 
+    ; )
+    
+    [(_ (f a))
+        #'(lambda (k)
+           ((cps f) (lambda (fv)
+               ((cps a) (lambda (av) (fv av k)))
+          )))
+    
+    [(_ (f a b))
+        ; Pegamos uma aplicação de função, com dois argumentos.
+        ; Ela tem uma continuação
+        #'(lambda (k)
+           ; Interpretamos 'a' e passamos como continuação para 
+           ; ele o segundo argumento
+           ((cps a) (lambda (av)
+               ; Interpretamos 'b' e passamos como continuação para
+               ; ele a funçaõ aplicada a ambos os argumentos
+               ((cps b) (lambda (bv)
+                    (k (f av bv) )))))
+          )
+    ]
+))
+
+; Continuação "identidade", para não fazermos nada na última continuação
+(define identity '(lambda (c) c))
+
+; Açúcar sintático para rodar expressões feitas na linguagem
+; de escrita de continuações. Ele pega uma continuação e passa
+; como continuação final para ela a identidade, que fará a última
+; ação parar a recursão.
+(define (run [k : s-exp]) (k identity) )
+
+Exemplo de expansão
+---------------------
+
+(cps (display (+ (rn "f") (rn "s"))) )
+
+(λ (k) ( (cps (+ (...) (λ (ov (k (display ov))))))
+         (λ(k) ( (λ (k2) ((cps (rn ...) 
+                            (λ (av) (cps ((rn "s"))
+                              (λ (bv) (k2 (f av bv))))))))))

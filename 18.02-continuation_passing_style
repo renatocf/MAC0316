@@ -45,11 +45,13 @@ alterar o resultado. A implementação poderia ser feita de duas formas:
 * Açúcar : Usando macros para transformar as sentenças originais;
 * Core   : Modificar o core para implementar esta forma.
 
-Se pegássemos umaexpressão,teríamos a transformação na forma:
+Se pegássemos uma expressão, teríamos a transformação na forma:
 e:    3 * (5 + 2) - 7 * 4
 f(x): 3 * x - 7 * 4         e = f(5+2)
 g(y): y - 7 * 4             e = g(f(5+2))
 ...                         ...
 
 Estamos passando o resultado de uma ação para a próxima. Essa é a ideia
-de PILHA DE EXECUÇÃO, como feita em Assembly. Está é a CSP.
+de PILHA DE EXECUÇÃO, como feita em Assembly. Cada ação devolve apenas
+uma modificação de estado, e o estado é compartilhada pelas várias ações
+necessárias para serem feitas.
