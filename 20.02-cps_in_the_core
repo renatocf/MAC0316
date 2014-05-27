@@ -1,0 +1,87 @@
+CPS MONTADO NO CORE
+=====================
+
+Como poderíamos fazer para alterar a nossa última linguagem, de modo a
+criar CPS? Simples: a partir da árvore, vamos interpretá-la construindo
+estruturas em CPS. Precisaremos passar, a cada uma das interpretações,
+qual é a CONTINUAÇÃO.
+
+(define-type Value
+    [closV (f : ((Value -> Value) : Value))]
+)
+
+(define (interp/k [expr : ExprC] [env : Env] [k : (Value -> Value)]) Value
+  (type-case ExprC expr
+    [numC (n)   (k (numV n))]
+    [idC (n)    (k (lookup n env))]
+    
+    ; Precisamos:
+    ; 1. Calcular o valor de f (intepretar a expressão f). Passamos
+    ;    o environment corrente + uma continuação.
+    ; 2. Armazenar o resultado de f, guardando esse valor num λ
+    ; 3. Calcular o valor de a (interpretar a expressão a). Passamos
+    ;    o environment corrente + uma continuação.
+    ; 4. Guardamos o valor interpretado de a em f
+    ; 5. Por último, aplicamos a closure, passando:
+    ;    5.1. av como argumento principal
+    ;    5.2. k como continuação, para computar o restante
+    [appC (f a) (interp/k f env (lambda (fv)
+                                  (interp/k a env
+                                    (lambda (av) (closV-f fv) av k)
+                                )))
+    ]
+    
+    ; Não precisamos passar uma continuação com num+. Como ele não faz
+    ; mais nada - ele é um caso básico - não precisamos passar o k para 
+    ; lá. Numa função qualquer, que poderia ter mais chamadas de
+    ; funções, precisaríamos PASSAR esta continuação porque a função
+    ; vai para o outro lugar.
+    [plusC (l r) (interp/k l env (lambda (lv) 
+                   (interp/k r env (lambda (rv) 
+                     (k (num+ lv rv))
+                   ))
+                 ))
+    ]
+    
+    ; Análogo ao caso acima
+    [multC (l r) (interp/k l env (lambda (lv) 
+                   (interp/k r env (lambda (rv) 
+                     (k (num* lv rv))
+                   ))
+                 ))
+    ]
+    
+    ; Análogo aos casos acima
+    [ifC (c y n) (interp/k c env (lambda (cv)
+                   (if (zero? (numV-n cv))
+                     (interp/k n env (lambda (nv) (k nv)))
+                     (interp/k y env (lambda (yv) (k yv)))
+                 )))
+    ]
+    
+    ; No lambda, o processo segue os mesmos princípios:
+    ; 1. Nosso valor de retorno será um closV, que recebe como 
+    ;    argumento uma função de Valor em Valor
+    ; 2. A função criada terá dois argumentos: um valor de argumento
+    ;    (o argumento tradicional) e uma nova continuação (dyn-k). 
+    ;    NÃO usamos k, pois ele é uma continuação na construção de
+    ;    expressões. Caso nossa interpretação final tivesse como 
+    ;    valor de retorno apenas um lambda, por exemplo, teríamos
+    ;    um lamda que está no estilo CPS.
+    ; 3. O corpo do lambda será a conversão para o estilo CPS
+    ;    (interpretação) do argumento 'b'. Ele deverá ter como
+    ;    environment o environment EXTENDIDO com a associação de 
+    ;    'a' a 'arg-val'. Essa interpretação, porém, deverá ocorrer
+    ;    sobre a continuação dyn-k.
+    [lamC (a b) (k (closV (lambda (arg-val dyn-k)
+                            (interp/k b
+                              (extend-env (bind a arg-val) env) dyn-k))
+    ))]
+))
+
+O interpretador muda pouco:
+(define (interp [e : ExprC]) : ExprC
+  (interp/k e mt-env identity))
+
+Sendo a função identidade a base da recursão, que não faz nada:
+(define (identity [i : ExprC] i))

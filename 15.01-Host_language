@@ -118,5 +118,3 @@ Então:
 )))
 
 (define (lookup [name : symbol] [e : Env]) (e name))
-
-Esquematicamente

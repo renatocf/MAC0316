@@ -1,0 +1,24 @@
+Continuation Passing Style
+============================
+
+Umexemplo simples de CPS possível seriafazer a soma passo a passo:
+(+ a b)
+
+(λ (k) ((cps a) (λ (av) ((cps b) (λ (bv) (k (+ av bv)))))))
+        ^^^^^^^    ^^^^  ^^^^^^^    ^^^^    ^^^^^^^^^
+          (1)       (2)    (3)       (4)       (5)
+
+1) Primeiro, calculamos o argumento 'a' da soma. O resultado será um
+   lambda que aceita uma continuação;
+2) O valor calculado em 'a' será passado para a continuação - e salvo
+   no labmda com a associação de do da computação com av;
+3) A continuação comeva calculando o argumento 'b' da soma. O resultado
+   será um lambda que aceita uma continuação;
+4) O valor calculado em 'b' será passado para a continuação - e salvo
+   na lambda com a associação do resultado da computação com bv;
+5) Usando 'av' e 'bv', realizamos a última computação (somar av com
+   bv, o primeiro salvo no environment desse lambda). O resultado deve
+   ser aplicado na continuação global da expressão: k.
+
+Se quiséssemos apenas EXECUTAR, então poderíamos executar esta
+continuação passando 'k' como a função identidade.
