@@ -7,7 +7,18 @@ estruturas em CPS. Precisaremos passar, a cada uma das interpretações,
 qual é a CONTINUAÇÃO.
 
 (define-type Value
-    [closV (f : ((Value -> Value) : Value))]
+    [numV  (n : number)]
+    
+    ; Nosso valor é uma função:
+    ; 1. Que tem como domínio um valor com dois argumentos:
+    ;    1.1 Um valor
+    ;    1.2 Uma função de Valor em Valor
+    ; 2. Que tem como imagem um valor
+    ;
+    [closV (f : (Value (Value -> Value) -> Value))]
+    ;           |(1.1)      (1.2)           (2)  |
+    ;           |                                |
+    ;           '-------------- (1) -------------'
 )
 
 (define (interp/k [expr : ExprC] [env : Env] [k : (Value -> Value)]) Value
