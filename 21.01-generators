@@ -1,0 +1,153 @@
+GERADORES
+===========
+
+Geradores são lambdas que interrompem sua execução, e, ao serem chamadas
+novamente, continuam do ponto em que tinham parado.
+
+Em orientação a objetos, temos um método que realiza uma ação como a de
+um gerador: o iterador - que retorna o próximo elemento de algum tipo de
+ação.
+
+Em Python, existe suporte para geradores: o comando 'yield'
+
+>>> def f() :
+...    n = 0
+...    while n >= 0 :
+...        yield n
+...        n += 3
+>>> g = f()
+>>> g.next()
+0
+>>> g.next()
+3
+>>> g.next()
+6
+>>> g.next()
+9
+
+Existes várias opções para implementar geradores:
+1) Usando orientação a objetos (como via interfaces, em Java)
+2) Usar uma fábrica de geradores, que funciona para qualquer lambda
+3) Usar CPS (Continuation Passing Style) para a implementação
+
+Nossa implementação usará:
+- CPS (Continuation Passing Style)
+- Retomada direta (sem o 'next')
+- yield é um procedimento
+- erro no final da execução
+
+Para fazermos um Generator, teremos:
+
+    .----------------------------------------------------------.
+    |                          GENERATOR                       |
+    |------------------------------.---------------------------|
+    |     Entrada (chamada)        |       Saída (yield)       |
+    |------------------------------|---------------------------|
+    | Lembrar ONDE está quem chama | Saber para ONDE retornar  |
+    |------------------------------X---------------------------|
+    | Saber ONDE deve prosseguir   | Lembrar ONDE parou        |
+    '------------------------------'---------------------------'
+
+A nossas continuações está nos "ONDE" de todas as entradas e saídas:
+saber o que virá em seguida é nossa continuação.
+
+Quando entramos em um generator, salvamos a continuação da ação que
+chamou o generator. Quando chegamos no yield, precisamos salvar o 
+ponto do código em que estamos (para continuar na próxima chamada) 
+e retornamos para a continuação de quem chamou a função. Na próxima
+chamada, começaremos pelo Generator.
+
+    ; O _ representa o nome o gerador de macros (cps)
+    ; 
+    ; Essa estrutura estará dentro do cps
+    ; Toda vez que encontrarmos 'generator', teremos 3 argumentos
+    ; 1. Função 'yield' que fará a interrupção
+    ; 2. Valor para o generator (será apenas 1, por simplicidade)
+    ; 3. Corpo da função com ações a serem realizadas
+    ;
+    [(_ (generator (yield) v b))
+        
+        ; Predicado: teste para ver se a conversão é válida
+        (and (identifier? #'yield) (identifier? $'v))
+        
+        ; CPS transformado: nossa continuação com algo a mais
+        #'(lambda (k) (k 
+            ; Aqui está o nosso gerador: usaremos um let recursivo
+            ; para podermos chamar as várias funções
+            (letrec (
+                [where-to-go 
+                    ; A função where-to-go só é um auxiliar inicial,
+                    ; para que apresentemos uma mensagem de erro no
+                    ; caso de não termos nenhum yield no começo
+                    (lambda (v) (error 'where-to-go "nothing"))
+                ]
+                [resumer
+                    ; A função resumer é a responsável por executar
+                    ; o corpo do generator. Como ele está em CPS, 
+                    ; quando terminarmos de executá-lo deveremos 
+                    ; "sair" da função com uma exceção.
+                    ;
+                    ; Esta definição de resumer será sobrescrita 
+                    ; ao chamarmos um yield dentro do corpo. Porém,
+                    ; a execução inicial do corpo, em cps, com a 
+                    ; continuação sendo o erro, já está feita.
+                    ;
+                    (lambda (v) (
+                        (cps b) (lambda (k)
+                        (error 'generator "fell though"))
+                    ))
+                ]
+                [yield
+                    ; Nossa função yield deve ser chamada de dentro
+                    ; do corpo da função. Ela está em CPS, e por isso
+                    ; tem um argumento e uma continuação (gen-k). 
+                    ; 
+                    ; Como resumer está salva dentro do ambiente do
+                    ; letrec, podemos sobrescrevê-lo usando o set.
+                    ; O novo resumer será a continuação do generator.
+                    ; 
+                    ; Quando chamarmos o lambda na segunda execução,
+                    ; 'resumer' fará com que a nossa função comece 
+                    ; em gen-k: justamente o que queríamos - o 
+                    ; programa partir da continuação.
+                    ; 
+                    (lambda (v gen-k) (begin
+                        (set! resumer gen-k)
+                        (where-to-go v)
+                    ))
+                ]
+            
+            ); fim do letrec
+                
+                ; Quando executamos nossa função, setamos qual será
+                ; a continuação ao acabarmos esta rodada do lambda.
+                ; Uma vez feito isso, executamos 'resumer'
+                (λ (v dyn-k) (begin
+                    (set! where-to-go dyn-k)
+                    (resumer v)
+                ))
+            )
+        ))
+    ]
+
+Resumindo o passo-a-passo da construção do generator:
+1. Nosso generator é um lambda em CPS. Deverá ter um argumento (v) e 
+   uma continuação (dyn-k). Ele salva o dyn-k no storage e aplica
+   a função resumer com argumento 'v'.
+
+2. A primeira versão de resumer é simples: chama o corpo 'b' que 
+   (definido na implementação generator) com o valor 'v'. Como 
+   'b' está em CPS, ele precisa de continuação. Conforme nossa 
+   definição inicial, ao acabar de executar devolveremos uma 
+   exceção (que nada mais é que um lambda).
+
+3. Dentro do corpo, pode haver chamadas de 'yield'. O 'yield' 
+   é um lambda em CPS que recebe um argumento e uma continuação.
+   A continuação é o trecho de código que, em Python, vem logo 
+   após o 'yield'. Como as funções 'where-to-go', 'yield' e 
+   'resumer' estão salvas dentro do mesmo letrec, podemos alterar
+   o storage associado a esses símbolos. Por isso, 'yield' 
+   sobrescreve 'resumer' para ser esta continuação.
+
+4. Daí para frente, a execução continua, nesse processo de substituição
+   de 'resumer' por 'yield' e execução das continuações.
