@@ -1,0 +1,195 @@
+TIPOS
+======
+
+De forma geral, quando temos expressões, não temos como saber se o
+resultado será válido ou não. Em alguns casos, teremos erro certamente.
+Em outros, sempre funcionará. No terceiro caso, não teremos como saber
+até o tempo de execução.
+
+Por esse motivo, existem os tipos. Eles permitem que verifiquemos a 
+validade de algumas expressões ainda antes da execução. Por exemplo:
+* [XX] (+ 3 (λ (x) x)) 
+  Sempre será errada, porque não conseguimos somar função e número.
+* [OK] (let ([f (λ (x) (+ x 1))]) (+ 3 (f 5)) )
+  Teremos necessariamente um número retornado na aplicação de f,
+  e o programa funcionará.
+* [XX] (let ([f (λ (x) (λ (y) (+ x y)))]) (+ 3 (f 5)) )
+  F devolverá sempre uma função, e não funcionará.
+* [??] (λ (f) (+ 3 (f 5)))
+  O resultado só poderia ser visto em tempo de execução, pois
+  depende do argumento f.
+* [??] (+ 3 (zero? (read-number) 5 (λ (x) x)) )
+  Nesse caso, não teríamos nenhuma maneira de verificar o tipo
+  até que ocorresse a execução.
+
+Cada linguagem lida com esses diversos problemas de formas diferentes.
+Algumas, como o Racket padrão, Python ou Perl não verificam de forma
+alguma. Uma opção é verificar tipos em tempo de execução, o que causaria
+um overhead muito grande. De outras maneiras, poderíamos ter problemas.
+
+Tipo
+|--> Conjunto dos valores
+'--> Qualquer propriedade verificável sem a necessidade de executar
+     o programa.
+
+* Essa definição de tipos mostra que nem sempre é possível verificá-los.
+  Caso conseguíssemos testá-los em todos os casos, estaríamos resolvendo 
+  o problema da parada de Turing (que é indecidível, o que nos mostra
+  que nem sempre é possível).
+* Expressões estão associadas a tipos que devem ser consistentes.
+
+* Desvantagens da tipagem
+    - Perda de flexibilidades (aumenta as restrições)
+    - Pode aumentar o custo computacional
+    - Exige anotação do programa
+    - Problema de computabilidade
+* Possíveis vantagens
+    - Evita tempo de depuração (diminui erros de execução)
+    - Captura erros em trechos não executados
+    - Documentação (os tipos, por si próprios, conseguem mostrar
+      o que uma função recebe e retorna)
+    - Auxilia o compilador (permite otimizações voltadas 
+      a um dado tipo)
+    - Força um código mais elegante (padronizado)
+
+SISTEMA DE TIPOS
+==================
+
+Existem três elementos essenciais para implementar um sistema de tipos:
+1) Coleção de tipos
+2) Um julgamento: valor ↔ tipo ? (sistema formal)
+3) Um algoritmo para o julgamento
+
+* Cada expressão tem uma regra:
+    { n         : número
+    { (λ (a) b) : função
+    Essas associações são mantidas num ENVIRONMENT DE TIPOS (Γ)
+
+* Julgador
+    Γ  ⊢  n         : Número
+    Γ  ⊢  (λ (a) b) : Função
+    Partindo dos axiomas em nossa teoria (Γ), conseguimos provar por
+    meio de regras de dedução que algo pertence a um tipo.
+
+* Faremos as representações usando a seguinte forma:
+    procedentes
+    -----------  Numa forma parecida com o método de prova da 
+    conclusões   dedução natural
+    
+    Usaremos a seguinte notação:
+    * Γ         : ambiente de tipos (associações)
+    * Γ ⊢       : julgador
+    * τx        : tipo de x
+    * Γ[x ← τ1] : ambiente estendido
+    * ∅         : ambiente vazio
+    
+    Γ ⊢ l : num  Γ ⊢ r : num  
+    ------------------------  Regra de dedução natural para a SOMA
+       Γ ⊢ (+ l r) : num      
+    
+    Γ ⊢ f : func  Γ ⊢ a : τa } Agora, não temos como deduzir o tipo
+    ------------------------ } de retorno apenas sabendo que f é do
+        Γ ⊢ (f a) : ?        } tipo função
+    
+    Γ ⊢ f : τa → τb  Γ ⊢ a : τa  } Regra de dedução natural para a 
+    ---------------------------  } APLICAÇÂO DE FUNÇÃO
+           Γ ⊢ (f a) : τb        } Na função, precisamos da notação
+                                       domínio → contradomínio
+    
+    Γ[a ← τ1] ⊢ b : τ2 } Regra de dedução natural para a DEFINIÇÃO
+    ------------------ } DE FUNÇÃO
+    Γ ⊢ (λ (a) b) : τ2 } Nossa teoria estendida, com a hipótese de que
+                         a é do tipo τ1, prova que b é do tipo τ2. 
+                         Nesse caso, o lambda retorna τ2.
+    
+    Γ ⊢  c : boolean  Γ ⊢ y : τ1  Γ ⊢ n : τ2 } Se tivermos argumentos
+    ---------------------------------------- } de tipos diferentes no 
+              Γ ⊢ (if c y n) : ?             } if não teríamos como 
+                                               diferenciar para a 
+                                               dedução
+    
+    Γ ⊢  c : boolean  Γ ⊢ y : τ1  Γ ⊢ n : τ1 } Regra de dedução natural
+    ---------------------------------------- } para o IF
+               Γ ⊢ (if c y n) : τ1           } 
+
+* Exemplos:
+    - (+ 2 (+ 5 7)) 
+      ; Soma simples (funciona)
+    
+        ∅ ⊢ 2 : num  ∅ ⊢ 5 : num  ∅ ⊢ 7 : num
+                     ------------------------
+                        ∅ ⊢ (+ 5 7) : num
+        -------------------------------------
+              ∅ ⊢ (+ 2 (+ 5 7)) : num
+    
+    - (+ 3 (λ ([x : num] : num x))) 
+      ; Soma com função (não funciona)
+    
+        ∅ ⊢ 3 : num   (λ ([x : num] : num x)) : num → num
+        --------------------------------------------------
+                ∅ ⊬ (+ 3 (λ ([x : num] : num x)))
+        
+        Não está definido uma regra de soma de num → num
+    
+    - Laço infinito com combinador-Y
+      
+      (                    (                    (
+        (λ (x) (x x))  →     (λ (x) (x x))  →     (λ (x) (x x))  →  ...
+        (λ (x) (x x))  →     (λ (x) (x x))  →     (λ (x) (x x))  →  ...
+      )                    )                    )
+      ^^^^^^^^^^^^^^^      ^^^^^^^^^^^^^^^      ^^^^^^^^^^^^^^^
+        1ª Iteração          2ª Iteração          3ª Iteração
+    
+      ω : τa → τω      } Para descrevermos essa recursão infinita
+             τa → τρ   } (pelo uso do combinador-Y), precisaríamos
+                   ... } de uma dedução infinitamente longa.
+      
+      Caso essa lista fosse finita, seria possível provar que o 
+      programa para. Mas se o programa sempre parar, então resolvemos
+      o Problema da Parada. Isso é impossível, pois o problema é 
+      indecidível. Então essa linguagem que usamos NÃO É CAPAZ de 
+      descrever esse laço infinito.
+      
+      Para suportarmos a existência de recursão, precisaremos criar
+      uma regra que use lazyness:
+      
+      Γ[i ← τi] ⊢ b : τ  Γ[i ← τi] ⊢ v : τi
+      -------------------------------------
+           Γ ⊢ (rec (i : τi v) b) : τ
+      
+      O "rec" é o lambda que faz a construção de recursão - seja via
+      combinador-y ou por manutenção do estado. Ele precisa de dois
+      argumentos: o primeiro, uma lista que contenha o SÌMBOLO A 
+      SER USADO PARA A CHAMADA RECURSIVA (i) com A FUNÇÃO USADA PARA
+      GERAR A RECURSÃO (v); o segundo, o CORPO DA FUNÇÃO (b).
+      
+      O argumento "i" precisa ser do mesmo tipo do v, porque 
+      será associado a ele dentro da implementação recursiva. 
+      Também, usando a associação de 'i' com seu tipo, precisamos
+      provar que o corpo retornará τ.
+      
+* Podemos resumir as regras como sendo:
+    
+    .===============.==========================================.
+    |   OPERAÇÂO    | REGRA                                    |
+    |===============|==========================================|
+    |  +,-,*,/      | Γ ⊢ l : num  Γ ⊢ r : num                 |
+    |               | ------------------------                 |
+    |               |    Γ ⊢ (+ l r) : num                     |
+    |===============|==========================================|
+    | (λ (a) b)     | Γ[a ← τ1] ⊢ b : τ2                       |
+    |               | ------------------                       |
+    |               | Γ ⊢ (λ (a) b) : τ2                       |
+    |===============|==========================================|
+    | (f a)         | Γ ⊢ f : τa → τb  Γ ⊢ a : τa              |
+    |               | ---------------------------              |
+    |               |        Γ ⊢ (f a) : τb                    |
+    |===============|==========================================|
+    | (if c y n)    | Γ ⊢  c : boolean  Γ ⊢ y : τ1  Γ ⊢ n : τ1 |
+    |               | ---------------------------------------- |
+    |               |            Γ ⊢ (if c y n) : τ1           |
+    |===============|==========================================|
+    | (rec (i v) b) | Γ[i ← τi] ⊢ b : τ  Γ[i ← τi] ⊢ v : τi    |
+    |               | -------------------------------------    |
+    |               |     Γ ⊢ (rec (i : τi v) b) : τ           |
+    '==============='=========================================='
