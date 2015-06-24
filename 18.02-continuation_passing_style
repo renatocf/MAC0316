@@ -27,7 +27,7 @@ Ex:
     ; (λ (arg resto) (resto (ação arg)) )
     
     - Original:
-    ((λ (a) (+ (* a 2) b)) 2)
+    ((λ (a) (+ (* a 2) 5)) 2)
     
     - CPS:
     (
